@@ -2,12 +2,26 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import calendar
+import openai
+import os
 
 # Load rules
 @st.cache_data
 def load_rules():
     df = pd.read_csv("data/rules_final.csv")
     return df
+
+def enrich_recommendation(text, model="gpt-3.5-turbo"):
+    try:
+        response = openai.ChatCompletion.create(
+            model=model,
+            messages=[{"role": "user", "content": f"Write a one-sentence insight for this rule: {text}"}],
+            temperature=0.5,
+            max_tokens=60
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        return f"(GPT Error: {e})"
 
 def get_recommendations(df, item, month, rec_type, min_conf, min_lift, min_support, top_n, sort_by, bidirectional, sku_filter, min_conseq_freq):
     if month != "Any":
@@ -37,6 +51,12 @@ def get_recommendations(df, item, month, rec_type, min_conf, min_lift, min_suppo
 # App starts
 st.set_page_config(page_title="E-commerce Basket Recommender", layout="wide")
 st.title("🛍️ E-commerce Basket Recommender")
+
+openai_key = st.sidebar.text_input("🔐 OpenAI API Key", type="password")
+if openai_key:
+    openai.api_key = openai_key
+
+enrich = st.sidebar.checkbox("💡 Use OpenAI for smart rule suggestions")
 
 rules_df = load_rules()
 month_order = list(calendar.month_name)[1:]  # January to December
@@ -83,6 +103,10 @@ if not top_rules.empty:
     for _, row in top_rules.iterrows():
         direction = "buys" if row['antecedent'] == selected_item else "is also bought with"
         st.write(f"If someone **{direction}** `{selected_item}`, they’re likely to also buy **{row['consequent']}** (confidence: {row['confidence']:.2f}, lift: {row['lift']:.2f})")
+
+        if enrich and openai_key:
+            enriched = enrich_recommendation(f"{row['antecedent']} → {row['consequent']}, conf: {row['confidence']}, lift: {row['lift']}")
+            st.caption(f"🤖 GPT: {enriched}")
 
     st.markdown("### 📊 Confidence Chart")
     plot_data = top_rules.sort_values("confidence", ascending=True)
