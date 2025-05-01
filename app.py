@@ -95,12 +95,6 @@ with st.sidebar:
     sort_by = st.radio("📌 Sort By", ["confidence", "lift"])
     group_by = st.radio("🗂️ Group By", ["None", "type", "Month"])
 
-rules_df = load_rules()
-sales_df = load_sales_data()
-
-# Merge rules with sales data
-merged_data = merge_data(rules_df, sales_df)
-
 filtered_df, available_items = get_recommendations(
     merged_data, None, month, rec_type, min_conf, min_lift, min_support,
     top_n, sort_by, bidirectional, sku_filter, min_conseq_freq
