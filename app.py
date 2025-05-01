@@ -18,7 +18,6 @@ def load_sales_data():
 
 # Add Total Spent
     sales_data['TotalSpent'] = sales_data['Quantity'] * sales_data['UnitPrice']
-
     sales_data = (
         sales_data
           .groupby('Description')
@@ -29,21 +28,6 @@ def load_sales_data():
           )
           .reset_index()
     )
-
-# Now proceed with the aggregation
-if not all(col in sales_data.columns for col in ['Total_Items', 'Price', 'Total_Spent']):
-    # group & aggregate
-    sales_data = (
-        sales_data
-          .groupby('Description')
-          .agg(
-             Total_Items = ('Quantity',  'sum'),
-             Price = ('UnitPrice', 'mean'),
-             Total_Spent = ('TotalSpent', 'sum'), # Calculate Total_Spent using the existing TotalSpent column
-          )
-          .reset_index()
-    )
-
 # Merge rule data and sales data
 def merge_data(rules_df, sales_df):
     merged_df = pd.merge(rules_df, sales_df, how="left", left_on="antecedent", right_on="Description")
