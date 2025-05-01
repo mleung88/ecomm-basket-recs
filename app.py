@@ -40,7 +40,7 @@ def aggregate_sales_data(sales_data):
     )
     return sales_data
 
-# Merge rule data and sales data
+# Merge the rules data with the sales data
 def merge_data(rules_df, sales_df):
     # Aggregate sales data
     sales_data = aggregate_sales_data(sales_df)
@@ -48,6 +48,7 @@ def merge_data(rules_df, sales_df):
     # Merge rules with sales data
     merged_df = pd.merge(rules_df, sales_data, how="left", left_on="antecedent", right_on="Description")
     return merged_df
+
 
 # Get recommendations based on filters
 def get_recommendations(df, item, month, rec_type, min_conf, min_lift, min_support, top_n, sort_by, bidirectional, sku_filter, min_conseq_freq):
