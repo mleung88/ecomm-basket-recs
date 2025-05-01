@@ -1,0 +1,5 @@
+streamlit
+pandas
+mlxtend
+networkx         # if you do graph visualizations
+matplotlib
