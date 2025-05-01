@@ -20,51 +20,56 @@ def get_recommendations(df, item, month, rec_type, min_conf, min_lift, min_suppo
     df = df[(df['confidence'] >= min_conf) & (df['lift'] >= min_lift) & (df['support'] >= min_support)]
     df = df.drop_duplicates(subset=["antecedent", "consequent"], keep="first")
 
-    if bidirectional:
-        df = df[(df['antecedent'] == item) | (df['consequent'] == item)].copy()
-    else:
-        df = df[df['antecedent'] == item].copy()
-
-    df = df[df['antecedent'] != df['consequent']]
-
     if sku_filter:
         df = df[df['SKU'].astype(str).str.contains(sku_filter, case=False)]
 
     if "consequent_count" in df.columns:
         df = df[df['consequent_count'] >= min_conseq_freq]
 
+    filtered_items = sorted(set(df['antecedent']).union(set(df['consequent'])))
+    return df, filtered_items
+
+def filter_top_rules(df, item, bidirectional, top_n, sort_by):
+    if bidirectional:
+        df = df[(df['antecedent'] == item) | (df['consequent'] == item)].copy()
+    else:
+        df = df[df['antecedent'] == item].copy()
+
+    df = df[df['antecedent'] != df['consequent']]
     return df.sort_values(sort_by, ascending=False).head(top_n)
 
 # App starts
 st.set_page_config(page_title="E-commerce Basket Recommender", layout="wide")
-st.title("🛍️ E-commerce Basket Recommender")
+st.title("🍭 E-commerce Basket Recommender")
 
 rules_df = load_rules()
 month_order = list(calendar.month_name)[1:]  # January to December
 months = ["Any"] + [m for m in month_order if m in rules_df['Month'].unique()]
-items = sorted(set(rules_df['antecedent']).union(set(rules_df['consequent'])))
 types = ["All"] + (rules_df['type'].dropna().unique().tolist() if "type" in rules_df.columns else [])
 
-# Sidebar inputs
+# Sidebar filters before item selection
 month = st.sidebar.selectbox("📅 Filter by Month", months)
-selected_item = st.sidebar.selectbox("🛒 Choose an item", items)
 rec_type = st.sidebar.radio("🔀 Rule Type", types)
 min_conf = st.sidebar.slider("📉 Minimum Confidence", 0.0, 1.0, 0.4, 0.05)
 min_lift = st.sidebar.slider("📈 Minimum Lift", 1.0, 5.0, 1.2, 0.1)
 min_support = st.sidebar.slider("📊 Minimum Support", 0.0, 0.1, 0.01, 0.005)
 min_conseq_freq = st.sidebar.slider("🛒 Consequent Min Frequency (baskets)", 1, 100, 5)
+sku_filter = st.sidebar.text_input("📉 Filter by SKU (optional)")
 bidirectional = st.sidebar.checkbox("↔ Include item as consequent too")
 top_n = st.sidebar.slider("🔢 Top N Recommendations", 1, 20, 10)
 sort_by = st.sidebar.radio("📌 Sort By", ["confidence", "lift"])
 group_by = st.sidebar.radio("📁 Group Results By", ["None", "type", "Month"])
 keyword = st.sidebar.text_input("🔍 Search Consequent Contains")
-sku_filter = st.sidebar.text_input("🔢 Filter by SKU (optional)")
 
-# Get recommendations
-top_rules = get_recommendations(
-    rules_df, selected_item, month, rec_type, min_conf, min_lift, min_support,
+# Load filtered data and available items
+filtered_df, available_items = get_recommendations(
+    rules_df, None, month, rec_type, min_conf, min_lift, min_support,
     top_n, sort_by, bidirectional, sku_filter, min_conseq_freq
 )
+selected_item = st.sidebar.selectbox("🛒 Choose an item", available_items)
+
+# Apply selection
+top_rules = filter_top_rules(filtered_df, selected_item, bidirectional, top_n, sort_by)
 
 if keyword:
     top_rules = top_rules[top_rules['consequent'].str.contains(keyword, case=False, na=False)]
@@ -107,6 +112,6 @@ if not top_rules.empty:
             ax.legend()
             st.pyplot(fig)
 
-    st.download_button("📥 Download These Recs", top_rules.to_csv(index=False), "recs.csv")
+    st.download_button("📅 Download These Recs", top_rules.to_csv(index=False), "recs.csv")
 else:
     st.info("No recommendations found for this item.")
