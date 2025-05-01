@@ -10,18 +10,6 @@ def load_rules():
     df = pd.read_csv("data/rules_final.csv")
     return df
 
-def enrich_recommendation(text, model="gpt-3.5-turbo"):
-    try:
-        response = openai.ChatCompletion.create(
-            model=model,
-            messages=[{"role": "user", "content": f"Write a one-sentence insight for this rule: {text}"}],
-            temperature=0.5,
-            max_tokens=60
-        )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        return f"(GPT Error: {e})"
-
 def get_recommendations(df, item, month, rec_type, min_conf, min_lift, min_support, top_n, sort_by, bidirectional, sku_filter, min_conseq_freq):
     if month != "Any":
         df = df[df['Month'] == month]
@@ -51,37 +39,11 @@ def get_recommendations(df, item, month, rec_type, min_conf, min_lift, min_suppo
 st.set_page_config(page_title="E-commerce Basket Recommender", layout="wide")
 st.title("🛍️ E-commerce Basket Recommender")
 
-openai_key = st.sidebar.text_input("🔐 OpenAI API Key", type="password")
-if openai_key:
-    openai.api_key = openai_key
-
-enrich = st.sidebar.checkbox("💡 Use OpenAI for smart rule suggestions")
-
 rules_df = load_rules()
 month_order = list(calendar.month_name)[1:]  # January to December
 months = ["Any"] + [m for m in month_order if m in rules_df['Month'].unique()]
-# Step 1: Apply filters *before* selecting item
-filtered_df = rules_df.copy()
-
-if month != "Any":
-    filtered_df = filtered_df[filtered_df['Month'] == month]
-
-if "type" in filtered_df.columns and rec_type != "All":
-    filtered_df = filtered_df[filtered_df['type'] == rec_type]
-
-filtered_df = filtered_df[
-    (filtered_df['confidence'] >= min_conf) &
-    (filtered_df['lift'] >= min_lift) &
-    (filtered_df['support'] >= min_support)
-]
-
-if "consequent_count" in filtered_df.columns:
-    filtered_df = filtered_df[filtered_df['consequent_count'] >= min_conseq_freq]
-
-# Step 2: Build list of valid antecedents (optional: include bidirectional logic here too)
-valid_items = sorted(set(filtered_df['antecedent']))
-selected_item = st.sidebar.selectbox("🛒 Choose an item", valid_items)
-
+items = sorted(set(rules_df['antecedent']).union(set(rules_df['consequent'])))
+types = ["All"] + (rules_df['type'].dropna().unique().tolist() if "type" in rules_df.columns else [])
 
 # Sidebar inputs
 month = st.sidebar.selectbox("📅 Filter by Month", months)
@@ -122,10 +84,6 @@ if not top_rules.empty:
     for _, row in top_rules.iterrows():
         direction = "buys" if row['antecedent'] == selected_item else "is also bought with"
         st.write(f"If someone **{direction}** `{selected_item}`, they’re likely to also buy **{row['consequent']}** (confidence: {row['confidence']:.2f}, lift: {row['lift']:.2f})")
-
-        if enrich and openai_key:
-            enriched = enrich_recommendation(f"{row['antecedent']} → {row['consequent']}, conf: {row['confidence']}, lift: {row['lift']}")
-            st.caption(f"🤖 GPT: {enriched}")
 
     st.markdown("### 📊 Confidence Chart")
     plot_data = top_rules.sort_values("confidence", ascending=True)
