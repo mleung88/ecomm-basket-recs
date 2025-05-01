@@ -42,6 +42,8 @@ def filter_top_rules(df, item, bidirectional, top_n, sort_by):
 st.set_page_config(page_title="E-commerce Basket Recommender", layout="wide")
 st.title("🍭 E-commerce Basket Recommender")
 
+selected_item = st.sidebar.selectbox("🛒 Choose an item", available_items)
+
 rules_df = load_rules()
 month_order = list(calendar.month_name)[1:]  # January to December
 months = ["Any"] + [m for m in month_order if m in rules_df['Month'].unique()]
@@ -66,7 +68,6 @@ filtered_df, available_items = get_recommendations(
     rules_df, None, month, rec_type, min_conf, min_lift, min_support,
     top_n, sort_by, bidirectional, sku_filter, min_conseq_freq
 )
-selected_item = st.sidebar.selectbox("🛒 Choose an item", available_items)
 
 # Apply selection
 top_rules = filter_top_rules(filtered_df, selected_item, bidirectional, top_n, sort_by)
@@ -97,20 +98,6 @@ if not top_rules.empty:
     ax.set_xlabel("Confidence")
     ax.set_ylabel("Consequent Item")
     st.pyplot(fig)
-
-    st.markdown("### 📈 Trend of Confidence Across Months")
-    if 'Month' in rules_df.columns:
-        trend_data = rules_df[(rules_df['antecedent'] == selected_item) & (rules_df['consequent'].isin(top_rules['consequent']))]
-        if not trend_data.empty:
-            fig, ax = plt.subplots()
-            for cons in trend_data['consequent'].unique():
-                temp = trend_data[trend_data['consequent'] == cons]
-                temp = temp.set_index('Month').reindex(month_order).reset_index()
-                ax.plot(temp['Month'], temp['confidence'], label=cons, marker='o')
-            ax.set_ylabel("Confidence")
-            ax.set_title(f"Monthly confidence trends for rules starting with '{selected_item}'")
-            ax.legend()
-            st.pyplot(fig)
 
     st.download_button("📅 Download These Recs", top_rules.to_csv(index=False), "recs.csv")
 else:
