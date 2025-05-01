@@ -119,7 +119,7 @@ with col2:
         month_order = list(calendar.month_name)[1:]
         trend_data = merged_data[(merged_data['antecedent'] == selected_item) & (merged_data['consequent'].isin(top_rules['consequent']))]
 
-        if not trend_data.empty:
+    if not trend_data.empty:
         # Drop duplicates before reindexing to prevent errors
         trend_data = trend_data.drop_duplicates(subset=['Month', 'consequent'])
 
