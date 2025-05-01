@@ -13,7 +13,7 @@ def load_rules():
 # Load transaction data (sales data)
 @st.cache_data
 def load_sales_data():
-    sales_df = pd.read_csv("clean_ecommdata.csv")
+    sales_df = pd.read_csv("Filter.csv")
     return sales_df
 
 def get_recommendations(df, item, month, rec_type, min_conf, min_lift, min_support, top_n, sort_by, bidirectional, sku_filter, min_conseq_freq):
