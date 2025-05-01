@@ -16,9 +16,19 @@ def load_sales_data():
     sales_df = pd.read_csv("Filter.csv")  # Ensure Filter.csv is available
     return sales_df
 
-# Check if 'TotalSpent' column exists, if not, calculate it
-if 'TotalSpent' not in sales_data.columns:
+# Add Total Spent
     sales_data['TotalSpent'] = sales_data['Quantity'] * sales_data['UnitPrice']
+
+    sales_data = (
+        sales_data
+          .groupby('Description')
+          .agg(
+             Total_Items = ('Quantity',  'sum'),
+             Price = ('UnitPrice', 'mean'),
+             Total_Spent = ('TotalSpent', 'sum'), # Calculate Total_Spent using the existing TotalSpent column
+          )
+          .reset_index()
+    )
 
 # Now proceed with the aggregation
 if not all(col in sales_data.columns for col in ['Total_Items', 'Price', 'Total_Spent']):
