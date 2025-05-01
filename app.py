@@ -16,7 +16,6 @@ def load_sales_data():
     sales_df = pd.read_csv("Filter.csv")  # Ensure Filter.csv is available
     return sales_df
 
-# Add Total Spent
     sales_data['TotalSpent'] = sales_data['Quantity'] * sales_data['UnitPrice']
     sales_data = (
         sales_data
@@ -28,10 +27,9 @@ def load_sales_data():
           )
           .reset_index()
     )
-# Merge rule data and sales data
-def merge_data(rules_df, sales_df):
-    merged_df = pd.merge(rules_df, sales_df, how="left", left_on="antecedent", right_on="Description")
-    return merged_df
+
+merged_df = pd.merge(rules_df, sales_data[['Description', 'Total_Items', 'Price', 'Total_Spent']], 
+                     left_on='antecedent', right_on='Description', how='left')
 
 def get_recommendations(df, item, month, rec_type, min_conf, min_lift, min_support, top_n, sort_by, bidirectional, sku_filter, min_conseq_freq):
     if month != "Any":
