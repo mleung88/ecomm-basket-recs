@@ -35,17 +35,14 @@ def add_total_spent(sales_data):
     )
     return sales_data
 
-# Merging rules and sales data
+# Merge rule data and sales data
 def merge_data(rules_df, sales_df):
-    # Aggregating sales data
-    sales_data = sales_df.groupby('Description').agg(
-        Total_Items=('Quantity', 'sum'),
-        Price=('UnitPrice', 'mean'),
-        Total_Spent=('TotalSpent', 'sum')  # Assuming TotalSpent is already calculated
-    ).reset_index()
-
-    # Merge the rules data with the aggregated sales data
-    merged_df = pd.merge(rules_df, sales_data, how="left", left_on="antecedent", right_on="Description")
+    # Add the Total_Spent calculations
+    sales_data = add_total_spent(sales_df)
+    
+    # Merge sales data with rules data
+    merged_df = pd.merge(rules_df, sales_data[['Description', 'Total_Items', 'Price', 'Total_Spent']], 
+                         left_on='antecedent', right_on='Description', how='left')
     return merged_df
 
 def get_recommendations(df, item, month, rec_type, min_conf, min_lift, min_support, top_n, sort_by, bidirectional, sku_filter, min_conseq_freq):
@@ -108,6 +105,7 @@ filtered_df, available_items = get_recommendations(
     merged_data, None, month, rec_type, min_conf, min_lift, min_support,
     top_n, sort_by, bidirectional, sku_filter, min_conseq_freq
 )
+
 selected_item = st.selectbox("🛍️ Select a Product to Analyze", available_items)
 top_rules = filter_top_rules(filtered_df, selected_item, bidirectional, top_n, sort_by)
 
@@ -163,4 +161,3 @@ if not top_rules.empty:
     st.download_button("📥 Download CSV", top_rules.to_csv(index=False), "recommendations.csv")
 else:
     st.warning("No recommendations available for this selection.")
-
