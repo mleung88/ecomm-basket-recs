@@ -16,16 +16,16 @@ def load_sales_data():
     sales_df = pd.read_csv("Filter.csv")  # Ensure Filter.csv is available
     return sales_df
 
-# Add Total Spent
+# Add Total Spent if not present
 def add_total_spent(sales_data):
-    # Check if 'TotalSpent' column exists, if not, calculate it
     if 'TotalSpent' not in sales_data.columns:
         sales_data['TotalSpent'] = sales_data['Quantity'] * sales_data['UnitPrice']
-    
-    # Aggregate sales data
+    return sales_data
+
+# Aggregate sales data by Description
+def aggregate_sales_data(sales_data):
     sales_data = (
-        sales_data
-        .groupby('Description')
+        sales_data.groupby('Description')
         .agg(
             Total_Items=('Quantity', 'sum'),
             Price=('UnitPrice', 'mean'),
@@ -35,20 +35,16 @@ def add_total_spent(sales_data):
     )
     return sales_data
 
-# Merging rules and sales data
+# Merge rule data and sales data
 def merge_data(rules_df, sales_df):
-    # Aggregating sales data
-    sales_data = sales_df.groupby('Description').agg(
-        Total_Items=('Quantity', 'sum'),
-        Price=('UnitPrice', 'mean'),
-        Total_Spent=('TotalSpent', 'sum')  # Assuming TotalSpent is already calculated
-    ).reset_index()
+    # Aggregate sales data
+    sales_data = aggregate_sales_data(sales_df)
 
-    # Merge the rules data with the aggregated sales data
+    # Merge rules with sales data
     merged_df = pd.merge(rules_df, sales_data, how="left", left_on="antecedent", right_on="Description")
     return merged_df
 
-
+# Get recommendations based on filters
 def get_recommendations(df, item, month, rec_type, min_conf, min_lift, min_support, top_n, sort_by, bidirectional, sku_filter, min_conseq_freq):
     if month != "Any":
         df = df[df['Month'] == month]
@@ -71,6 +67,7 @@ def get_recommendations(df, item, month, rec_type, min_conf, min_lift, min_suppo
 
     return df, filtered_items
 
+# Filter top rules based on item and other filters
 def filter_top_rules(df, item, bidirectional, top_n, sort_by):
     if bidirectional:
         df = df[(df['antecedent'] == item) | (df['consequent'] == item)].copy()
@@ -99,17 +96,20 @@ with st.sidebar:
     sort_by = st.radio("📌 Sort By", ["confidence", "lift"])
     group_by = st.radio("🗂️ Group By", ["None", "type", "Month"])
 
+# Load data
 rules_df = load_rules()
 sales_df = load_sales_data()
 
-# Merge rules with sales data
+# Merge the rules data with the sales data
 merged_data = merge_data(rules_df, sales_df)
 
+# Get filtered recommendations
 filtered_df, available_items = get_recommendations(
     merged_data, None, month, rec_type, min_conf, min_lift, min_support,
     top_n, sort_by, bidirectional, sku_filter, min_conseq_freq
 )
 
+# Product selection
 selected_item = st.selectbox("🛍️ Select a Product to Analyze", available_items)
 top_rules = filter_top_rules(filtered_df, selected_item, bidirectional, top_n, sort_by)
 
@@ -123,9 +123,9 @@ with col1:
     if group_by != "None" and group_by in top_rules.columns:
         for group, df_g in top_rules.groupby(group_by):
             st.markdown(f"### 🔸 {group}")
-            st.dataframe(df_g[['consequent', 'support', 'confidence', 'lift', 'Total_Items', 'Price', 'Total_Spent']])
+            st.dataframe(df_g[['consequent', 'support', 'confidence', 'lift', 'Total_Items', 'Total_Spent']])
     else:
-        st.dataframe(top_rules[['consequent', 'support', 'confidence', 'lift', 'Total_Items', 'Price', 'Total_Spent']])
+        st.dataframe(top_rules[['consequent', 'support', 'confidence', 'lift', 'Total_Items', 'Total_Spent']])
 
     if not top_rules.empty:
         st.markdown("### 📘 Natural Language Rules")
@@ -147,19 +147,19 @@ with col2:
         month_order = list(calendar.month_name)[1:]
         trend_data = merged_data[(merged_data['antecedent'] == selected_item) & (merged_data['consequent'].isin(top_rules['consequent']))]
 
-        if not trend_data.empty:
-            # Drop duplicates before reindexing to prevent errors
-            trend_data = trend_data.drop_duplicates(subset=['Month', 'consequent'])
+    if not trend_data.empty:
+        # Drop duplicates before reindexing to prevent errors
+        trend_data = trend_data.drop_duplicates(subset=['Month', 'consequent'])
 
-            fig, ax = plt.subplots()
-            for cons in trend_data['consequent'].unique():
-                temp = trend_data[trend_data['consequent'] == cons]
-                temp = temp.set_index('Month').reindex(month_order).reset_index()
-                ax.plot(temp['Month'], temp['confidence'], label=cons, marker='o')
-            ax.set_ylabel("Confidence")
-            ax.set_title(f"Monthly confidence trends for '{selected_item}'")
-            ax.legend()
-            st.pyplot(fig)
+        fig, ax = plt.subplots()
+        for cons in trend_data['consequent'].unique():
+            temp = trend_data[trend_data['consequent'] == cons]
+            temp = temp.set_index('Month').reindex(month_order).reset_index()
+            ax.plot(temp['Month'], temp['confidence'], label=cons, marker='o')
+        ax.set_ylabel("Confidence")
+        ax.set_title(f"Monthly confidence trends for '{selected_item}'")
+        ax.legend()
+        st.pyplot(fig)
 
 if not top_rules.empty:
     st.download_button("📥 Download CSV", top_rules.to_csv(index=False), "recommendations.csv")
