@@ -10,7 +10,6 @@ with st.sidebar:
     min_lift = st.slider("📈 Min Lift", 1.0, 5.0, 1.2, 0.1)
     min_support = st.slider("📊 Min Support", 0.0, 0.1, 0.01, 0.005)
     min_conseq_freq = st.slider("🛒 Consequent Frequency ≥", 1, 100, 5)
-    sku_filter = st.text_input("🔍 SKU Contains (optional)")
     top_n = st.slider("🔢 Top N Recs", 1, 20, 10)
     group_by = st.radio("🗂️ Group By", ["None", "type", "Month"])
 
@@ -20,7 +19,7 @@ rules_df = load_rules()
 # Filter recommendations
 filtered_df, available_items = get_recommendations(
     rules_df, selected_item, month, min_conf, min_lift, min_support,
-    top_n, sku_filter, min_conseq_freq
+    top_n, min_conseq_freq
 )
 
 # Filter the top rules
