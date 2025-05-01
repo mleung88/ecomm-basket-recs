@@ -51,6 +51,8 @@ months = ["Any"] + [m for m in month_order if m in rules_df['Month'].unique()]
 types = ["All"] + (rules_df['type'].dropna().unique().tolist() if "type" in rules_df.columns else [])
 
 # Sidebar filters
+month = st.sidebar.selectbox("📅 Filter by Month", months)
+rec_type = st.sidebar.radio("🔀 Rule Type", types)
 min_conf = st.sidebar.slider("📉 Minimum Confidence", 0.0, 1.0, 0.4, 0.05)
 min_lift = st.sidebar.slider("📈 Minimum Lift", 1.0, 5.0, 1.2, 0.1)
 min_support = st.sidebar.slider("📊 Minimum Support", 0.0, 0.1, 0.01, 0.005)
