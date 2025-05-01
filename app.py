@@ -42,8 +42,6 @@ def filter_top_rules(df, item, bidirectional, top_n, sort_by):
 st.set_page_config(page_title="E-commerce Basket Recommender", layout="wide")
 st.title("🍭 E-commerce Basket Recommender")
 
-selected_item = st.sidebar.selectbox("🛒 Choose an item", available_items)
-
 rules_df = load_rules()
 month_order = list(calendar.month_name)[1:]  # January to December
 months = ["Any"] + [m for m in month_order if m in rules_df['Month'].unique()]
@@ -68,6 +66,7 @@ filtered_df, available_items = get_recommendations(
     rules_df, None, month, rec_type, min_conf, min_lift, min_support,
     top_n, sort_by, bidirectional, sku_filter, min_conseq_freq
 )
+selected_item = st.sidebar.selectbox("🛒 Choose an item", available_items)
 
 # Apply selection
 top_rules = filter_top_rules(filtered_df, selected_item, bidirectional, top_n, sort_by)
