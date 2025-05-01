@@ -4,11 +4,40 @@ import matplotlib.pyplot as plt
 import calendar
 import os
 
-# Load rules
+# Load the rules and Filter data
 @st.cache_data
 def load_rules():
-    df = pd.read_csv("rules_final.csv")
-    return df
+    rules_df = pd.read_csv("rules_final.csv")
+    filter_df = pd.read_csv("Filter.csv")  # Load the Filter.csv file
+    return rules_df, filter_df
+
+# Merge Filter data with rules and calculate total spend
+def merge_data(rules_df, filter_df):
+    # Merge by Description (or StockCode if necessary)
+    merged_df = pd.merge(filter_df, rules_df, how='inner', left_on='Description', right_on='antecedent')
+
+    # Calculate total spend per product
+    merged_df['Total_Spend'] = merged_df['Quantity'] * merged_df['UnitPrice']
+
+    # Group by antecedent and consequent to get total quantity and spend
+    aggregated_data = merged_df.groupby(['antecedent', 'consequent']).agg(
+        total_quantity=('Quantity', 'sum'),
+        total_spend=('Total_Spend', 'sum')
+    ).reset_index()
+
+    return aggregated_data
+
+# Fetch rules data and merge it with Filter data
+rules_df, filter_df = load_rules()
+aggregated_data = merge_data(rules_df, filter_df)
+
+# App starts
+st.set_page_config(page_title="E-commerce Basket Recommender", layout="wide")
+st.title("📦 E-commerce Recommendation Dashboard")
+
+# Display aggregated data (Total Spend, Quantity for each rule pair)
+st.write("### Total Spend and Quantity for Each Rule Pair")
+st.dataframe(aggregated_data)
 
 def get_recommendations(df, item, month, rec_type, min_conf, min_lift, min_support, top_n, sort_by, bidirectional, sku_filter, min_conseq_freq):
     if month != "Any":
