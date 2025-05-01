@@ -24,6 +24,11 @@ def add_total_spent(sales_data):
 
 # Aggregate sales data by Description
 def aggregate_sales_data(sales_data):
+    # Ensure 'TotalSpent' exists or calculate it
+    if 'TotalSpent' not in sales_data.columns:
+        sales_data['TotalSpent'] = sales_data['Quantity'] * sales_data['UnitPrice']
+        
+    # Aggregation of total items, price, and total spent
     sales_data = (
         sales_data.groupby('Description')
         .agg(
