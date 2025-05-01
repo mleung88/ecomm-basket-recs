@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
+import calendar
 
 # Load rules
 @st.cache_data
@@ -8,7 +9,7 @@ def load_rules():
     df = pd.read_csv("data/rules_final.csv")
     return df
 
-def get_recommendations(df, item, month, rec_type, min_conf, min_lift, top_n=10):
+def get_recommendations(df, item, month, rec_type, min_conf, min_lift, sort_by, top_n=10):
     if month != "Any":
         df = df[df['Month'] == month]
 
@@ -25,8 +26,8 @@ def get_recommendations(df, item, month, rec_type, min_conf, min_lift, top_n=10)
     # Filter by selected item
     df = df[df['antecedent'] == item].copy()
 
-    # Sort by confidence or lift
-    df_sorted = df.sort_values("confidence", ascending=False).head(top_n)
+    # Sort by selected metric
+    df_sorted = df.sort_values(sort_by, ascending=False).head(top_n)
     return df_sorted
 
 # App starts
@@ -35,7 +36,8 @@ st.title("🛒 E-commerce Basket Recommender")
 
 # Load rules once
 rules_df = load_rules()
-months = ["Any"] + sorted(rules_df['Month'].dropna().unique().tolist())
+month_order = list(calendar.month_name)[1:]  # January to December
+months = ["Any"] + [m for m in month_order if m in rules_df['Month'].unique()]
 items = sorted(rules_df['antecedent'].unique())
 types = ["All"] + (rules_df['type'].dropna().unique().tolist() if "type" in rules_df.columns else [])
 
@@ -46,9 +48,10 @@ rec_type = st.sidebar.radio("🔀 Rule Type", types)
 min_conf = st.sidebar.slider("📉 Minimum Confidence", 0.0, 1.0, 0.4, 0.05)
 min_lift = st.sidebar.slider("📈 Minimum Lift", 1.0, 5.0, 1.2, 0.1)
 top_n = st.sidebar.slider("🔢 Top N Recommendations", 1, 20, 10)
+sort_by = st.sidebar.radio("📌 Sort By", ["confidence", "lift"])
 
 # Get recommendations
-top_rules = get_recommendations(rules_df, selected_item, month, rec_type, min_conf, min_lift, top_n=top_n)
+top_rules = get_recommendations(rules_df, selected_item, month, rec_type, min_conf, min_lift, sort_by, top_n=top_n)
 
 # Show results
 st.markdown(f"## Top {len(top_rules)} recs for `{selected_item}`")
@@ -68,5 +71,8 @@ if not top_rules.empty:
     ax.set_xlabel("Confidence")
     ax.set_ylabel("Consequent Item")
     st.pyplot(fig)
+
+    # Download button
+    st.download_button("📥 Download These Recs", top_rules.to_csv(index=False), "recs.csv")
 else:
     st.info("No recommendations found for this item.")
