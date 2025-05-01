@@ -1,4 +1,5 @@
 import pandas as pd
+import streamlit as st
 
 @st.cache_data
 def load_rules(path="data/rules_by_month_abs30_pruned.csv"):
