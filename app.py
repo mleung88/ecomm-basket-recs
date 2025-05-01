@@ -36,3 +36,32 @@ df_choices = df_choices.head(5)
 # === Display ===
 st.markdown(f"### Top {len(df_choices)} recs for `{user_selected_item}`")
 st.dataframe(df_choices[["consequent", "support", "confidence", "lift"]], use_container_width=True)
+
+
+import matplotlib.pyplot as plt
+
+st.subheader("📈 Recommendation Strength (by Confidence)")
+fig, ax = plt.subplots()
+top_rules_plot = top_rules.sort_values("confidence", ascending=True)
+ax.barh(top_rules_plot["consequent"], top_rules_plot["confidence"], color="#1f77b4")
+ax.set_xlabel("Confidence")
+ax.set_ylabel("Consequent Item")
+st.pyplot(fig)
+
+import networkx as nx
+
+G = nx.DiGraph()
+for _, row in top_rules.iterrows():
+    G.add_edge(row["antecedent"], row["consequent"], weight=row["lift"])
+
+plt.figure(figsize=(8,6))
+pos = nx.spring_layout(G, k=0.5, seed=42)
+edges = G.edges(data=True)
+weights = [e[2]["weight"] for e in edges]
+nx.draw(G, pos, with_labels=True, node_color="skyblue", node_size=1500,
+        edge_color=weights, edge_cmap=plt.cm.viridis, width=2)
+st.pyplot(plt)
+
+st.markdown(f"**Average Confidence:** {top_rules['confidence'].mean():.2f}")
+st.markdown(f"**Average Lift:** {top_rules['lift'].mean():.2f}")
+
