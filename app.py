@@ -7,7 +7,7 @@ import os
 # Load rules
 @st.cache_data
 def load_rules():
-    df = pd.read_csv("rules_final.csv") 
+    df = pd.read_csv("data/rules_final.csv")
     return df
 
 def get_recommendations(df, item, month, rec_type, min_conf, min_lift, min_support, top_n, sort_by, bidirectional, sku_filter, min_conseq_freq):
@@ -26,7 +26,10 @@ def get_recommendations(df, item, month, rec_type, min_conf, min_lift, min_suppo
     if "consequent_count" in df.columns:
         df = df[df['consequent_count'] >= min_conseq_freq]
 
-    filtered_items = sorted(set(df['antecedent']).union(set(df['consequent'])))
+    filtered_items = df['antecedent'].value_counts()
+    filtered_items = filtered_items[filtered_items >= top_n].index.tolist()
+    filtered_items = sorted(filtered_items)
+
     return df, filtered_items
 
 def filter_top_rules(df, item, bidirectional, top_n, sort_by):
@@ -66,6 +69,7 @@ filtered_df, available_items = get_recommendations(
     rules_df, None, month, rec_type, min_conf, min_lift, min_support,
     top_n, sort_by, bidirectional, sku_filter, min_conseq_freq
 )
+
 selected_item = st.sidebar.selectbox("🛒 Choose an item", available_items)
 
 # Apply selection
@@ -97,6 +101,20 @@ if not top_rules.empty:
     ax.set_xlabel("Confidence")
     ax.set_ylabel("Consequent Item")
     st.pyplot(fig)
+
+    st.markdown("### 📈 Trend of Confidence Across Months")
+    if 'Month' in rules_df.columns:
+        trend_data = rules_df[(rules_df['antecedent'] == selected_item) & (rules_df['consequent'].isin(top_rules['consequent']))]
+        if not trend_data.empty:
+            fig, ax = plt.subplots()
+            for cons in trend_data['consequent'].unique():
+                temp = trend_data[trend_data['consequent'] == cons]
+                temp = temp.set_index('Month').reindex(month_order).reset_index()
+                ax.plot(temp['Month'], temp['confidence'], label=cons, marker='o')
+            ax.set_ylabel("Confidence")
+            ax.set_title(f"Monthly confidence trends for rules starting with '{selected_item}'")
+            ax.legend()
+            st.pyplot(fig)
 
     st.download_button("📅 Download These Recs", top_rules.to_csv(index=False), "recs.csv")
 else:
