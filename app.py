@@ -54,14 +54,30 @@ bidirectional = st.sidebar.checkbox("↔ Include item as consequent too")
 top_n = st.sidebar.slider("🔢 Top N Recommendations", 1, 20, 10)
 sort_by = st.sidebar.radio("📌 Sort By", ["confidence", "lift"])
 
+# Optional group filter
+group_by = st.sidebar.radio("📁 Group Results By", ["None", "type", "Month"])
+
+# Optional keyword search
+keyword = st.sidebar.text_input("🔍 Search Consequent Contains")
+
 # Get recommendations
 top_rules = get_recommendations(
     rules_df, selected_item, month, rec_type, min_conf, min_lift, min_support, top_n, sort_by, bidirectional
 )
 
+if keyword:
+    top_rules = top_rules[top_rules['consequent'].str.contains(keyword, case=False, na=False)]
+
 # Show results
 st.markdown(f"## Top {len(top_rules)} recs for `{selected_item}`")
-st.dataframe(top_rules[['consequent', 'support', 'confidence', 'lift']])
+
+if group_by != "None" and group_by in top_rules.columns:
+    grouped = top_rules.groupby(group_by)
+    for group, df_g in grouped:
+        st.markdown(f"### 🔸 {group}")
+        st.dataframe(df_g[['consequent', 'support', 'confidence', 'lift']])
+else:
+    st.dataframe(top_rules[['consequent', 'support', 'confidence', 'lift']])
 
 if not top_rules.empty:
     st.markdown("### 🧾 Interpreted Recommendations")
@@ -72,7 +88,7 @@ if not top_rules.empty:
     st.markdown("### 📊 Confidence Chart")
     plot_data = top_rules.sort_values("confidence", ascending=True)
     fig, ax = plt.subplots()
-    ax.barh(plot_data["consequent"], plot_data["confidence"], color="#4caf50")
+    bars = ax.barh(plot_data["consequent"], plot_data["confidence"], color=plt.cm.Greens(plot_data["confidence"]))
     ax.set_xlabel("Confidence")
     ax.set_ylabel("Consequent Item")
     st.pyplot(fig)
