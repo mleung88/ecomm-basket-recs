@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 # Load rules
 @st.cache_data
 def load_rules():
-    df = pd.read_csv("rules_by_month_abs30.csv")
+    df = pd.read_csv("data/rules_final.csv")
     return df
 
 def get_recommendations(df, item, month, rec_type, min_conf, min_lift, top_n=10):
