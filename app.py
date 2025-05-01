@@ -1,35 +1,64 @@
+# app.py
 import streamlit as st
-from utils import load_rules, get_recommendations
+import pandas as pd
+import calendar
 
-st.set_page_config(page_title="Basket Recs", layout="wide")
-st.title("🛒 E-Commerce Basket Recommendations")
+@st.cache_data
+def load_rules(path: str = "rules_by_month_abs30.csv") -> pd.DataFrame:
+    """Load the CSV of pre-computed association rules."""
+    df = pd.read_csv(path)
+    # ensure Month is in calendar order
+    month_order = list(calendar.month_name)[1:]
+    df["Month"] = pd.Categorical(df["Month"], categories=month_order, ordered=True)
+    return df
 
-# Load once
-rules = load_rules()
+def get_recommendations(
+    df: pd.DataFrame,
+    month: str,
+    antecedent: str,
+    top_n: int = 5
+) -> pd.DataFrame:
+    """Filter to the chosen month + antecedent, sort by lift, and return top N."""
+    sub = df[(df["Month"] == month) & (df["antecedent"] == antecedent)]
+    return sub.sort_values("lift", ascending=False).head(top_n)
 
-# Sidebar controls
-st.sidebar.header("Filter options")
-all_products = sorted(rules["antecedent"].unique())
-prod = st.sidebar.selectbox("Pick an antecedent product:", all_products)
+def main():
+    st.set_page_config(page_title="🛒 Basket Recommender", layout="wide")
+    st.title("🛍️ E-Commerce Basket Recommender")
+    st.markdown(
+        """
+        Select a month and a product you've sold (the antecedent), 
+        and see the top associated products (consequents), ranked by lift.
+        """
+    )
 
-months = ["All"] + list(rules["Month"].cat.categories)
-month = st.sidebar.selectbox("Month:", months)
+    # 1. Load once (cached)
+    rules = load_rules()
 
-rec_type = st.sidebar.radio("Recommendation type:", ["cross", "variant"])
-top_n = st.sidebar.slider("Number of recs:", min_value=5, max_value=20, value=10)
+    # 2. Sidebar controls
+    months = rules["Month"].cat.categories
+    month = st.sidebar.selectbox("📅 Month", months)
+    month_df = rules[rules["Month"] == month]
 
-# Main panel
-st.subheader(f"Top {top_n} {rec_type.title()}-sells for “{prod}” → {month}")
-df = get_recommendations(rules, prod, month, top_n, rec_type)
-st.dataframe(df[["Month","antecedent","consequent","support","confidence","lift"]])
+    antecedents = month_df["antecedent"].unique()
+    antecedent = st.sidebar.selectbox("🛒 If a customer buys…", antecedents)
 
-# Optional: lift-over-time plot
-if month == "All":
-    try:
-        pivot = rules[
-            (rules["antecedent"] == prod) &
-            (rules["type"] == rec_type)
-        ].pivot_table(index="Month", values="lift", aggfunc="max").sort_index()
-        st.line_chart(pivot)
-    except Exception:
-        st.write("No time-series data available for this selection.")
+    top_n = st.sidebar.slider("🔢 How many recommendations?", 1, 20, 5)
+
+    # 3. Fetch and display
+    recs = get_recommendations(rules, month, antecedent, top_n)
+    if recs.empty:
+        st.warning("No rules found for that combination. Try lowering the lift or confidence thresholds in your mining step.")
+    else:
+        st.subheader(f"Top {top_n} recommendations for **{antecedent}** in **{month}**")
+        st.dataframe(
+            recs[["consequent", "support", "confidence", "lift"]],
+            use_container_width=True
+        )
+
+    # 4. Optional: show overall stats
+    st.sidebar.markdown("---")
+    st.sidebar.markdown(f"Total rules loaded: **{len(rules)}**")
+
+if __name__ == "__main__":
+    main()
