@@ -16,20 +16,34 @@ def load_sales_data():
     sales_df = pd.read_csv("Filter.csv")  # Ensure Filter.csv is available
     return sales_df
 
-    sales_data['TotalSpent'] = sales_data['Quantity'] * sales_data['UnitPrice']
+# Add Total Spent
+def add_total_spent(sales_data):
+    # Check if 'TotalSpent' column exists, if not, calculate it
+    if 'TotalSpent' not in sales_data.columns:
+        sales_data['TotalSpent'] = sales_data['Quantity'] * sales_data['UnitPrice']
+    
+    # Aggregate sales data
     sales_data = (
         sales_data
-          .groupby('Description')
-          .agg(
-             Total_Items = ('Quantity',  'sum'),
-             Price = ('UnitPrice', 'mean'),
-             Total_Spent = ('TotalSpent', 'sum'), # Calculate Total_Spent using the existing TotalSpent column
-          )
-          .reset_index()
+        .groupby('Description')
+        .agg(
+            Total_Items=('Quantity', 'sum'),
+            Price=('UnitPrice', 'mean'),
+            Total_Spent=('TotalSpent', 'sum')  # Calculate Total_Spent using the existing TotalSpent column
+        )
+        .reset_index()
     )
+    return sales_data
 
-merged_df = pd.merge(rules_df, sales_data[['Description', 'Total_Items', 'Price', 'Total_Spent']], 
-                     left_on='antecedent', right_on='Description', how='left')
+# Merge rule data and sales data
+def merge_data(rules_df, sales_df):
+    # Add the Total_Spent calculations
+    sales_data = add_total_spent(sales_df)
+    
+    # Merge sales data with rules data
+    merged_df = pd.merge(rules_df, sales_data[['Description', 'Total_Items', 'Price', 'Total_Spent']], 
+                         left_on='antecedent', right_on='Description', how='left')
+    return merged_df
 
 def get_recommendations(df, item, month, rec_type, min_conf, min_lift, min_support, top_n, sort_by, bidirectional, sku_filter, min_conseq_freq):
     if month != "Any":
@@ -105,9 +119,9 @@ with col1:
     if group_by != "None" and group_by in top_rules.columns:
         for group, df_g in top_rules.groupby(group_by):
             st.markdown(f"### 🔸 {group}")
-            st.dataframe(df_g[['consequent', 'support', 'confidence', 'lift']])
+            st.dataframe(df_g[['consequent', 'support', 'confidence', 'lift', 'Total_Items', 'Price', 'Total_Spent']])
     else:
-        st.dataframe(top_rules[['consequent', 'support', 'confidence', 'lift']])
+        st.dataframe(top_rules[['consequent', 'support', 'confidence', 'lift', 'Total_Items', 'Price', 'Total_Spent']])
 
     if not top_rules.empty:
         st.markdown("### 📘 Natural Language Rules")
@@ -129,21 +143,22 @@ with col2:
         month_order = list(calendar.month_name)[1:]
         trend_data = merged_data[(merged_data['antecedent'] == selected_item) & (merged_data['consequent'].isin(top_rules['consequent']))]
 
-    if not trend_data.empty:
-        # Drop duplicates before reindexing to prevent errors
-        trend_data = trend_data.drop_duplicates(subset=['Month', 'consequent'])
+        if not trend_data.empty:
+            # Drop duplicates before reindexing to prevent errors
+            trend_data = trend_data.drop_duplicates(subset=['Month', 'consequent'])
 
-        fig, ax = plt.subplots()
-        for cons in trend_data['consequent'].unique():
-            temp = trend_data[trend_data['consequent'] == cons]
-            temp = temp.set_index('Month').reindex(month_order).reset_index()
-            ax.plot(temp['Month'], temp['confidence'], label=cons, marker='o')
-        ax.set_ylabel("Confidence")
-        ax.set_title(f"Monthly confidence trends for '{selected_item}'")
-        ax.legend()
-        st.pyplot(fig)
+            fig, ax = plt.subplots()
+            for cons in trend_data['consequent'].unique():
+                temp = trend_data[trend_data['consequent'] == cons]
+                temp = temp.set_index('Month').reindex(month_order).reset_index()
+                ax.plot(temp['Month'], temp['confidence'], label=cons, marker='o')
+            ax.set_ylabel("Confidence")
+            ax.set_title(f"Monthly confidence trends for '{selected_item}'")
+            ax.legend()
+            st.pyplot(fig)
 
 if not top_rules.empty:
     st.download_button("📥 Download CSV", top_rules.to_csv(index=False), "recommendations.csv")
 else:
     st.warning("No recommendations available for this selection.")
+
