@@ -13,7 +13,7 @@ def load_rules():
 # Load transaction data (sales data)
 @st.cache_data
 def load_sales_data():
-    sales_df = pd.read_csv("Filter.csv")
+    sales_df = pd.read_csv("clean_ecommdata.csv")
     return sales_df
 
 def get_recommendations(df, item, month, rec_type, min_conf, min_lift, min_support, top_n, sort_by, bidirectional, sku_filter, min_conseq_freq):
@@ -47,12 +47,30 @@ def filter_top_rules(df, item, bidirectional, top_n, sort_by):
     df = df[df['antecedent'] != df['consequent']]
     return df.sort_values(sort_by, ascending=False).head(top_n)
 
+# Merge the Filter data with the rules
+def merge_data(rules_df, filter_df):
+    # Merge the rules data with the Filter data (on 'Description' / 'antecedent')
+    merged_df = pd.merge(filter_df, rules_df[['antecedent', 'consequent', 'support', 'confidence', 'lift']], 
+                         how='inner', left_on='Description', right_on='antecedent')
+
+    # Calculate total spend (Quantity * UnitPrice)
+    merged_df['Total_Spend'] = merged_df['Quantity'] * merged_df['UnitPrice']
+
+    # Group by antecedent and consequent to get total quantity and total spend
+    aggregated_data = merged_df.groupby(['antecedent', 'consequent']).agg(
+        total_quantity=('Quantity', 'sum'),
+        total_spend=('Total_Spend', 'sum')
+    ).reset_index()
+
+    return aggregated_data
+
 # App starts
 st.set_page_config(page_title="E-commerce Basket Recommender", layout="wide")
 st.title("📦 E-commerce Recommendation Dashboard")
 
 with st.sidebar:
     st.header("🔧 Filters")
+    selected_item = st.selectbox("🛍️ Select a Product to Analyze", available_items)
     month = st.selectbox("📅 Filter by Month", ["Any"] + list(calendar.month_name)[1:])
     rec_type = st.radio("🔀 Rule Type", ["All", "color_swap", "cross_category"])
     min_conf = st.slider("📉 Min Confidence", 0.0, 1.0, 0.4, 0.05)
@@ -66,14 +84,17 @@ with st.sidebar:
     sort_by = st.radio("📌 Sort By", ["confidence", "lift"])
     group_by = st.radio("🗂️ Group By", ["None", "type", "Month"])
 
+# Load the rules and sales data
 rules_df = load_rules()
 sales_data = load_sales_data()
 
+# Filter recommendations based on the user's selections
 filtered_df, available_items = get_recommendations(
     rules_df, None, month, rec_type, min_conf, min_lift, min_support,
     top_n, sort_by, bidirectional, sku_filter, min_conseq_freq
 )
 
+# Select item and filter top rules
 selected_item = st.selectbox("🛍️ Select a Product to Analyze", available_items)
 top_rules = filter_top_rules(filtered_df, selected_item, bidirectional, top_n, sort_by)
 
@@ -96,7 +117,7 @@ if keyword:
 col1, col2 = st.columns([2, 1])
 
 with col1:
-    st.subheader(f"🔎 Top {len(top_rules)} Recommendations for `{selected_item}`")
+    st.subheader(f"🔎 Top Recommendations for `{selected_item}`")
     if group_by != "None" and group_by in top_rules.columns:
         for group, df_g in top_rules.groupby(group_by):
             st.markdown(f"### 🔸 {group}")
@@ -111,30 +132,34 @@ with col1:
             st.markdown(f"- If someone **{direction}** `{selected_item}`, they often buy **{row['consequent']}** (conf: `{row['confidence']:.2f}`, lift: `{row['lift']:.2f}`)")
 
 with col2:
-    if not top_rules.empty:
-        st.markdown("### 📊 Confidence Bar Chart")
-        plot_data = top_rules.sort_values("confidence", ascending=True)
+    st.markdown("### 📊 Confidence Bar Chart")
+    plot_data = top_rules.sort_values("confidence", ascending=True)
+    fig, ax = plt.subplots()
+    bars = ax.barh(plot_data["consequent"], plot_data["confidence"], color=plt.cm.Greens(plot_data["confidence"]))
+    ax.set_xlabel("Confidence")
+    ax.set_ylabel("Consequent Item")
+    st.pyplot(fig)
+
+    st.markdown("### 📈 Trend Chart")
+    month_order = list(calendar.month_name)[1:]
+    trend_data = rules_df[(rules_df['antecedent'] == selected_item) & (rules_df['consequent'].isin(top_rules['consequent']))]
+    if not trend_data.empty:
         fig, ax = plt.subplots()
-        bars = ax.barh(plot_data["consequent"], plot_data["confidence"], color=plt.cm.Greens(plot_data["confidence"]))
-        ax.set_xlabel("Confidence")
-        ax.set_ylabel("Consequent Item")
+        for cons in trend_data['consequent'].unique():
+            temp = trend_data[trend_data['consequent'] == cons]
+            temp = temp.set_index('Month').reindex(month_order).reset_index()
+            ax.plot(temp['Month'], temp['confidence'], label=cons, marker='o')
+        ax.set_ylabel("Confidence")
+        ax.set_title(f"Monthly Confidence Trends for '{selected_item}'")
+        ax.legend()
         st.pyplot(fig)
 
-        st.markdown("### 📈 Trend Chart")
-        month_order = list(calendar.month_name)[1:]
-        trend_data = rules_df[(rules_df['antecedent'] == selected_item) & (rules_df['consequent'].isin(top_rules['consequent']))]
-        if not trend_data.empty:
-            fig, ax = plt.subplots()
-            for cons in trend_data['consequent'].unique():
-                temp = trend_data[trend_data['consequent'] == cons]
-                temp = temp.set_index('Month').reindex(month_order).reset_index()
-                ax.plot(temp['Month'], temp['confidence'], label=cons, marker='o')
-            ax.set_ylabel("Confidence")
-            ax.set_title(f"Monthly confidence trends for '{selected_item}'")
-            ax.legend()
-            st.pyplot(fig)
+# Display total spend and quantity for the selected item
+st.markdown("### 📊 Total Spend and Quantity for the Selected Item")
+agg_data = merged_data[merged_data['antecedent'] == selected_item]
+st.dataframe(agg_data[['consequent', 'total_quantity', 'total_spend']])
 
 if not top_rules.empty:
-    st.download_button("📥 Download CSV", top_rules.to_csv(index=False), "recommendations.csv")
+    st.download_button("📥 Download Recommendations CSV", top_rules.to_csv(index=False), "recommendations.csv")
 else:
     st.warning("No recommendations available for this selection.")
