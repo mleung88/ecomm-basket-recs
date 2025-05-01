@@ -1,82 +1,56 @@
-# app.py
 import streamlit as st
 import pandas as pd
+import matplotlib.pyplot as plt
 
-# === Load rules ===
+# Load rules
 @st.cache_data
-
 def load_rules():
-    return pd.read_csv("rules_by_month_abs30.csv")
+    df = pd.read_csv("rules_by_month_abs30.csv")
+    return df
 
-# === UI ===
-st.set_page_config(page_title="E-commerce Recommender")
-st.title("🏍️ E-commerce Basket Recommender")
+def get_recommendations(df, item, month, top_n=10):
+    # Optional month filter
+    if month != "Any":
+        df = df[df['Month'] == month]
 
-rules = load_rules()
-months = ["Any"] + sorted(rules["Month"].dropna().unique().tolist())
-selected_month = st.selectbox("Filter by Month", months)
-
-# === Filter by month ===
-if selected_month != "Any":
-    df = rules[rules["Month"] == selected_month].copy()
-else:
-    df = rules.copy()
+    # Drop duplicates across months
     df = df.drop_duplicates(subset=["antecedent", "consequent"], keep="first")
 
-# === Select an item ===
-candidates = sorted(df["antecedent"].unique().tolist())
-user_selected_item = st.selectbox("Choose an item to get recommendations", candidates)
+    # Filter by selected item
+    df = df[df['antecedent'] == item].copy()
 
-# === Get and process matching recommendations ===
-df_choices = df[df["antecedent"] == user_selected_item]
-df_choices = df_choices.sort_values("confidence", ascending=False)
-df_choices = df_choices.drop_duplicates(subset=["consequent"], keep="first")
-df_choices = df_choices.head(5)
+    # Sort by confidence or lift
+    df_sorted = df.sort_values("confidence", ascending=False).head(top_n)
+    return df_sorted
 
-# === Display ===
-st.markdown(f"### Top {len(df_choices)} recs for `{user_selected_item}`")
-st.dataframe(df_choices[["consequent", "support", "confidence", "lift"]], use_container_width=True)
+# App starts
+st.set_page_config(page_title="E-commerce Basket Recommender", layout="wide")
+st.title("🛒 E-commerce Basket Recommender")
 
+# Load rules once
+rules_df = load_rules()
+months = ["Any"] + sorted(rules_df['Month'].dropna().unique().tolist())
+items = sorted(rules_df['antecedent'].unique())
 
-top_rules_plot = top_rules.sort_values("confidence", ascending=True)
+# Sidebar inputs
+month = st.selectbox("Filter by Month", months)
+selected_item = st.selectbox("Choose an item to get recommendations", items)
+
+# Get recommendations
+top_rules = get_recommendations(rules_df, selected_item, month, top_n=10)
+
+# Show results
+st.markdown(f"## Top {len(top_rules)} recs for ` {selected_item} `")
+st.dataframe(top_rules[['consequent', 'support', 'confidence', 'lift']])
+
+# Bonus: Recommendation strength plot
 if not top_rules.empty:
     st.markdown("### 📈 Recommendation Strength (by Confidence)")
-    
-    top_rules_plot = top_rules.sort_values("confidence", ascending=True)
-
+    plot_data = top_rules.sort_values("confidence", ascending=True)
     fig, ax = plt.subplots()
-    ax.barh(top_rules_plot["consequent"], top_rules_plot["confidence"], color="#4caf50")
+    ax.barh(plot_data["consequent"], plot_data["confidence"], color="#4caf50")
     ax.set_xlabel("Confidence")
     ax.set_ylabel("Consequent Item")
     st.pyplot(fig)
 else:
     st.info("No recommendations found for this item.")
-
-
-import matplotlib.pyplot as plt
-
-st.subheader("📈 Recommendation Strength (by Confidence)")
-fig, ax = plt.subplots()
-top_rules_plot = top_rules.sort_values("confidence", ascending=True)
-ax.barh(top_rules_plot["consequent"], top_rules_plot["confidence"], color="#1f77b4")
-ax.set_xlabel("Confidence")
-ax.set_ylabel("Consequent Item")
-st.pyplot(fig)
-
-import networkx as nx
-
-G = nx.DiGraph()
-for _, row in top_rules.iterrows():
-    G.add_edge(row["antecedent"], row["consequent"], weight=row["lift"])
-
-plt.figure(figsize=(8,6))
-pos = nx.spring_layout(G, k=0.5, seed=42)
-edges = G.edges(data=True)
-weights = [e[2]["weight"] for e in edges]
-nx.draw(G, pos, with_labels=True, node_color="skyblue", node_size=1500,
-        edge_color=weights, edge_cmap=plt.cm.viridis, width=2)
-st.pyplot(plt)
-
-st.markdown(f"**Average Confidence:** {top_rules['confidence'].mean():.2f}")
-st.markdown(f"**Average Lift:** {top_rules['lift'].mean():.2f}")
-
