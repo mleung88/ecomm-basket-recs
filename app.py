@@ -1,9 +1,3 @@
-import streamlit as st
-import pandas as pd
-import matplotlib.pyplot as plt
-import calendar
-import os
-
 # Load the rules and Filter data
 @st.cache_data
 def load_rules():
@@ -30,6 +24,10 @@ def merge_data(rules_df, filter_df):
 # Fetch rules data and merge it with Filter data
 rules_df, filter_df = load_rules()
 aggregated_data = merge_data(rules_df, filter_df)
+
+# Filter invoice_totals to include only items in rules_final.csv
+invoice_totals = pd.read_csv("Filter.csv")
+filtered_invoice_totals = invoice_totals[invoice_totals['Description'].isin(rules_df['antecedent'])]
 
 # App starts
 st.set_page_config(page_title="E-commerce Basket Recommender", layout="wide")
