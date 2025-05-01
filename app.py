@@ -114,20 +114,24 @@ with col2:
         ax.set_xlabel("Confidence")
         ax.set_ylabel("Consequent Item")
         st.pyplot(fig)
-
+        
         st.markdown("### 📈 Trend Chart")
         month_order = list(calendar.month_name)[1:]
         trend_data = merged_data[(merged_data['antecedent'] == selected_item) & (merged_data['consequent'].isin(top_rules['consequent']))]
+
         if not trend_data.empty:
-            fig, ax = plt.subplots()
-            for cons in trend_data['consequent'].unique():
-                temp = trend_data[trend_data['consequent'] == cons]
-                temp = temp.set_index('Month').reindex(month_order).reset_index()
-                ax.plot(temp['Month'], temp['confidence'], label=cons, marker='o')
-            ax.set_ylabel("Confidence")
-            ax.set_title(f"Monthly confidence trends for '{selected_item}'")
-            ax.legend()
-            st.pyplot(fig)
+        # Drop duplicates before reindexing to prevent errors
+        trend_data = trend_data.drop_duplicates(subset=['Month', 'consequent'])
+
+        fig, ax = plt.subplots()
+        for cons in trend_data['consequent'].unique():
+            temp = trend_data[trend_data['consequent'] == cons]
+            temp = temp.set_index('Month').reindex(month_order).reset_index()
+            ax.plot(temp['Month'], temp['confidence'], label=cons, marker='o')
+        ax.set_ylabel("Confidence")
+        ax.set_title(f"Monthly confidence trends for '{selected_item}'")
+        ax.legend()
+        st.pyplot(fig)
 
 if not top_rules.empty:
     st.download_button("📥 Download CSV", top_rules.to_csv(index=False), "recommendations.csv")
