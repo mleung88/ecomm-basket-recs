@@ -7,7 +7,7 @@ import os
 # Load rules
 @st.cache_data
 def load_rules():
-    df = pd.read_csv("data/rules_final.csv")
+    df = pd.read_csv("rules_final.csv")
     return df
 
 def get_recommendations(df, item, month, rec_type, min_conf, min_lift, min_support, top_n, sort_by, bidirectional, sku_filter, min_conseq_freq):
