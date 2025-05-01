@@ -114,7 +114,7 @@ with col2:
         ax.set_xlabel("Confidence")
         ax.set_ylabel("Consequent Item")
         st.pyplot(fig)
-        
+
         st.markdown("### 📈 Trend Chart")
         month_order = list(calendar.month_name)[1:]
         trend_data = merged_data[(merged_data['antecedent'] == selected_item) & (merged_data['consequent'].isin(top_rules['consequent']))]
