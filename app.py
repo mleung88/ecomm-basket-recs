@@ -38,6 +38,21 @@ st.markdown(f"### Top {len(df_choices)} recs for `{user_selected_item}`")
 st.dataframe(df_choices[["consequent", "support", "confidence", "lift"]], use_container_width=True)
 
 
+top_rules_plot = top_rules.sort_values("confidence", ascending=True)
+if not top_rules.empty:
+    st.markdown("### 📈 Recommendation Strength (by Confidence)")
+    
+    top_rules_plot = top_rules.sort_values("confidence", ascending=True)
+
+    fig, ax = plt.subplots()
+    ax.barh(top_rules_plot["consequent"], top_rules_plot["confidence"], color="#4caf50")
+    ax.set_xlabel("Confidence")
+    ax.set_ylabel("Consequent Item")
+    st.pyplot(fig)
+else:
+    st.info("No recommendations found for this item.")
+
+
 import matplotlib.pyplot as plt
 
 st.subheader("📈 Recommendation Strength (by Confidence)")
