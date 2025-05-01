@@ -61,8 +61,28 @@ enrich = st.sidebar.checkbox("💡 Use OpenAI for smart rule suggestions")
 rules_df = load_rules()
 month_order = list(calendar.month_name)[1:]  # January to December
 months = ["Any"] + [m for m in month_order if m in rules_df['Month'].unique()]
-items = sorted(set(rules_df['antecedent']).union(set(rules_df['consequent'])))
-types = ["All"] + (rules_df['type'].dropna().unique().tolist() if "type" in rules_df.columns else [])
+# Step 1: Apply filters *before* selecting item
+filtered_df = rules_df.copy()
+
+if month != "Any":
+    filtered_df = filtered_df[filtered_df['Month'] == month]
+
+if "type" in filtered_df.columns and rec_type != "All":
+    filtered_df = filtered_df[filtered_df['type'] == rec_type]
+
+filtered_df = filtered_df[
+    (filtered_df['confidence'] >= min_conf) &
+    (filtered_df['lift'] >= min_lift) &
+    (filtered_df['support'] >= min_support)
+]
+
+if "consequent_count" in filtered_df.columns:
+    filtered_df = filtered_df[filtered_df['consequent_count'] >= min_conseq_freq]
+
+# Step 2: Build list of valid antecedents (optional: include bidirectional logic here too)
+valid_items = sorted(set(filtered_df['antecedent']))
+selected_item = st.sidebar.selectbox("🛒 Choose an item", valid_items)
+
 
 # Sidebar inputs
 month = st.sidebar.selectbox("📅 Filter by Month", months)
