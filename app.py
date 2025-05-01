@@ -50,7 +50,25 @@ month_order = list(calendar.month_name)[1:]  # January to December
 months = ["Any"] + [m for m in month_order if m in rules_df['Month'].unique()]
 types = ["All"] + (rules_df['type'].dropna().unique().tolist() if "type" in rules_df.columns else [])
 
-# Sidebar filters before item selection
+# Load filtered data and available items for top-of-page dropdown
+month = "Any"
+rec_type = "All"
+min_conf = 0.0
+min_lift = 1.0
+min_support = 0.0
+min_conseq_freq = 1
+sku_filter = ""
+bidirectional = False
+top_n = 1
+sort_by = "confidence"
+filtered_df, available_items = get_recommendations(
+    rules_df, None, month, rec_type, min_conf, min_lift, min_support,
+    top_n, sort_by, bidirectional, sku_filter, min_conseq_freq
+)
+
+selected_item = st.selectbox("🛒 Choose an item", available_items)
+
+# Sidebar filters
 month = st.sidebar.selectbox("📅 Filter by Month", months)
 rec_type = st.sidebar.radio("🔀 Rule Type", types)
 min_conf = st.sidebar.slider("📉 Minimum Confidence", 0.0, 1.0, 0.4, 0.05)
@@ -64,15 +82,12 @@ sort_by = st.sidebar.radio("📌 Sort By", ["confidence", "lift"])
 group_by = st.sidebar.radio("📁 Group Results By", ["None", "type", "Month"])
 keyword = st.sidebar.text_input("🔍 Search Consequent Contains")
 
-# Load filtered data and available items
-filtered_df, available_items = get_recommendations(
+# Refresh filtered dataframe based on updated settings
+filtered_df, _ = get_recommendations(
     rules_df, None, month, rec_type, min_conf, min_lift, min_support,
     top_n, sort_by, bidirectional, sku_filter, min_conseq_freq
 )
 
-selected_item = st.sidebar.selectbox("🛒 Choose an item", available_items)
-
-# Apply selection
 top_rules = filter_top_rules(filtered_df, selected_item, bidirectional, top_n, sort_by)
 
 if keyword:
