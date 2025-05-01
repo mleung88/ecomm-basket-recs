@@ -93,6 +93,21 @@ if not top_rules.empty:
     ax.set_ylabel("Consequent Item")
     st.pyplot(fig)
 
+    # Trend chart for selected item across months
+    st.markdown("### 📈 Trend of Confidence Across Months")
+    if 'Month' in rules_df.columns:
+        trend_data = rules_df[(rules_df['antecedent'] == selected_item) & (rules_df['consequent'].isin(top_rules['consequent']))]
+        if not trend_data.empty:
+            fig, ax = plt.subplots()
+            for cons in trend_data['consequent'].unique():
+                temp = trend_data[trend_data['consequent'] == cons]
+                temp = temp.set_index('Month').reindex(month_order).reset_index()
+                ax.plot(temp['Month'], temp['confidence'], label=cons, marker='o')
+            ax.set_ylabel("Confidence")
+            ax.set_title(f"Monthly confidence trends for rules starting with '{selected_item}'")
+            ax.legend()
+            st.pyplot(fig)
+
     st.download_button("📥 Download These Recs", top_rules.to_csv(index=False), "recs.csv")
 else:
     st.info("No recommendations found for this item.")
