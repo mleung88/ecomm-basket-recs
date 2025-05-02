@@ -6,27 +6,27 @@ import calendar
 st.set_page_config(page_title="E-commerce Recommendation Dashboard", layout="wide")
 st.title("📦 E-commerce Recommendation Dashboard")
 
-#
-# ─── DATA LOADING & AGGREGATION ─────────────────────────────────────────────────
-#
+
+# ─── 1) LOAD & PREPARE DATA ────────────────────────────────────────────────────
 
 @st.cache_data
 def load_rules():
+    # your association rules
     return pd.read_csv("rules_final.csv")
 
 
 @st.cache_data
-def load_sales():
+def load_and_aggregate_sales():
     df = pd.read_csv("Filter.csv")
-    # Compute TotalSpent if not already present
+    # Compute TotalSpent if missing
     if "TotalSpent" not in df.columns:
         df["TotalSpent"] = df["Quantity"] * df["UnitPrice"]
-    # Aggregate to one row per Description
+    # collapse to one row per Description
     summary = (
         df.groupby("Description")
           .agg(
-             Total_Items = ("Quantity", "sum"),
-             Price       = ("UnitPrice", "mean"),
+             Total_Items = ("Quantity",   "sum"),
+             Price       = ("UnitPrice",  "mean"),
              Total_Spent = ("TotalSpent", "sum"),
           )
           .reset_index()
@@ -35,41 +35,37 @@ def load_sales():
 
 
 @st.cache_data
-def merge_data(rules, sales):
-    merged = pd.merge(
-        rules, sales,
+def merge_rules_sales(rules, sales_summary):
+    # left‐join on antecedent → metrics for that SKU
+    return pd.merge(
+        rules, sales_summary,
         how="left",
         left_on="antecedent",
         right_on="Description"
     )
-    return merged
 
 
-rules_df  = load_rules()
-sales_df  = load_sales()
-merged_df = merge_data(rules_df, sales_df)
+rules_df       = load_rules()
+sales_summary  = load_and_aggregate_sales()
+merged_df      = merge_rules_sales(rules_df, sales_summary)
 
 
-#
-# ─── SIDEBAR FILTERS ─────────────────────────────────────────────────────────────
-#
+# ─── 2) SIDEBAR FILTERS ─────────────────────────────────────────────────────────
 
 with st.sidebar:
     st.header("🔧 Filters")
-
     month       = st.selectbox("📅 Filter by Month", ["Any"] + list(calendar.month_name)[1:])
-    rec_type    = st.radio("🔀 Rule Type", ["All", "color_swap", "cross_category"])
-    min_conf    = st.slider("📉 Min Confidence", 0.0, 1.0, 0.4, 0.05)
-    min_lift    = st.slider("📈 Min Lift",      1.0, 5.0, 1.2, 0.1)
-    min_sup     = st.slider("📊 Min Support",   0.0, 0.1, 0.01, 0.005)
-    min_baskets = st.slider("🛒 Consequent Frequency ≥", 1, 100, 5)
+    rec_type    = st.radio("🔀 Rule Type", ["All","color_swap","cross_category"])
+    min_conf    = st.slider("📉 Min Confidence",  0.0, 1.0, 0.4, 0.05)
+    min_lift    = st.slider("📈 Min Lift",        1.0, 5.0, 1.2, 0.1)
+    min_sup     = st.slider("📊 Min Support",     0.0, 0.1, 0.01,0.005)
+    min_count   = st.slider("🛒 Consequent Frequency ≥", 1, 100, 5)
     sku_filter  = st.text_input("🔍 SKU Contains (optional)")
     text_filt   = st.text_input("🔍 Search Consequent Text")
-    bidir       = st.checkbox("↔ Bidirectional Match", value=False)
+    bidir       = st.checkbox("↔ Bidirectional Match")
     top_n       = st.slider("🔢 Top N Recs", 1, 20, 10)
-    sort_by     = st.radio("📌 Sort By", ["confidence", "lift"])
-    group_by    = st.radio("🗂️ Group By", ["None", "type", "Month"])
-
+    sort_by     = st.radio("📌 Sort By", ["confidence","lift"])
+    group_by    = st.radio("🗂️ Group By", ["None","type","Month"])
     st.markdown("---")
     st.download_button(
         "📥 Download Full Merged Data",
@@ -78,86 +74,85 @@ with st.sidebar:
     )
 
 
-#
-# ─── RECOMMENDATION LOGIC ────────────────────────────────────────────────────────
-#
+# ─── 3) RECOMMENDATION LOGIC ────────────────────────────────────────────────────
 
-def get_recs(df):
+def get_filtered_rules(df):
     d = df.copy()
-    if month != "Any":
-        d = d[d["Month"] == month]
-    if "type" in d.columns and rec_type != "All":
-        d = d[d["type"] == rec_type]
+    if month!="Any":
+        d = d[d["Month"]==month]
+    if rec_type!="All" and "type" in d.columns:
+        d = d[d["type"]==rec_type]
     d = d[
-        (d["confidence"] >= min_conf) &
-        (d["lift"]       >= min_lift) &
-        (d["support"]    >= min_sup)
+        (d["confidence"]>=min_conf)&
+        (d["lift"]     >=min_lift)&
+        (d["support"]  >=min_sup)
     ]
     d = d.drop_duplicates(subset=["antecedent","consequent"])
+    # count how many consequents each antecedent has
     d["consequent_count"] = d.groupby("antecedent")["consequent"].transform("count")
-    d = d[d["consequent_count"] >= min_baskets]
+    d = d[d["consequent_count"]>=min_count]
     if sku_filter:
-        d = d[d["SKU"].astype(str).str.contains(sku_filter, case=False)]
+        d = d[d["SKU"].astype(str).str.contains(sku_filter,case=False)]
     return d
 
-
-def filter_top(d, item):
-    # keep rows where item is antecedent, or if bidir, where item is consequent
-    df0 = d[
-        (d["antecedent"] == item) |
-        (bidir & (d["consequent"] == item))
-    ].copy()
-    df0 = df0[df0["antecedent"] != df0["consequent"]]
-    df0 = df0.sort_values(sort_by, ascending=False).head(top_n)
+def get_top_for_item(d, selected):
+    # keep rules where selected is the antecedent (or, if bidir, the consequent)
+    cond = (d["antecedent"]==selected)
+    if bidir:
+        cond |= (d["consequent"]==selected)
+    top = d[cond].copy()
+    top = top[top["antecedent"]!=top["consequent"]]
+    top = top.sort_values(sort_by,ascending=False).head(top_n)
+    # allow text search on consequents
     if text_filt:
-        df0 = df0[df0["consequent"].str.contains(text_filt, case=False, na=False)]
-    return df0
+        top = top[top["consequent"].str.contains(text_filt,case=False,na=False)]
+    # now **inject each consequent's** own Price/Total_Items/Total_Spent
+    top = top.merge(
+        sales_summary,
+        how="left",
+        left_on="consequent",
+        right_on="Description"
+    ).drop(columns=["Description"])
+    return top
 
-
-filtered_df     = get_recs(merged_df)
+filtered_df     = get_filtered_rules(merged_df)
 available_items = sorted(filtered_df["antecedent"].unique())
 
 st.subheader("🛍️ Select a Product to Analyze")
-selected = st.selectbox("", available_items)
+selected_item   = st.selectbox("", available_items)
 
-top_rules = filter_top(filtered_df, selected)
+top_rules = get_top_for_item(filtered_df, selected_item)
 
-
-#
-# ─── METRIC ──────────────────────────────────────────────────────────────────────
-#
-
+# show a single metric: total baskets
 if not top_rules.empty:
-    # total baskets = sum of consequent_count over these top rules
-    metric_val = int(top_rules["consequent_count"].sum())
-    st.metric("🧺 Total Possible Baskets", f"{metric_val}")
+    total_baskets = int(top_rules["consequent_count"].sum())
+    st.metric("🧺 Total Possible Baskets", f"{total_baskets}")
 else:
-    st.warning("No recommendations available for these filters.")
+    st.warning("No recommendations for these filters.")
 
 
-#
-# ─── MAIN TABLE & NATURAL LANGUAGE ───────────────────────────────────────────────
-#
+# ─── 4) DISPLAY TABLE & NATURAL LANGUAGE ────────────────────────────────────────
 
 col1, col2 = st.columns([2,1])
+
 with col1:
     if not top_rules.empty:
-        st.subheader(f"🔎 Top {len(top_rules)} Recommendations for `{selected}`")
+        st.subheader(f"🔎 Top {len(top_rules)} Recs for `{selected_item}`")
         display_cols = [
             "consequent","support","confidence","lift",
             "Total_Items","Price","Total_Spent"
         ]
-        if group_by != "None" and group_by in top_rules.columns:
+        if group_by!="None" and group_by in top_rules.columns:
             for grp, grp_df in top_rules.groupby(group_by):
                 st.markdown(f"#### 🔸 {grp}")
                 st.dataframe(grp_df[display_cols])
         else:
             st.dataframe(top_rules[display_cols])
 
-        st.markdown("### 📘 Natural Language Rules")
+        st.markdown("### 📘 Natural Language")
         for _, r in top_rules.iterrows():
             st.markdown(
-                f"- People who bought **{selected}** also often buy **{r['consequent']}**  "
+                f"- People who bought **{selected_item}** also buy **{r['consequent']}**  "
                 f"(conf: {r['confidence']:.2f}, lift: {r['lift']:.2f}, "
                 f"items: {int(r['Total_Items'])}, spent: ${r['Total_Spent']:.2f})"
             )
@@ -166,39 +161,35 @@ with col2:
     if not top_rules.empty:
         st.markdown("### 📊 Confidence Bar Chart")
         fig, ax = plt.subplots()
-        ax.barh(
-            top_rules["consequent"],
-            top_rules["confidence"],
-            color=plt.cm.Greens(top_rules["confidence"])
-        )
+        ax.barh(top_rules["consequent"], top_rules["confidence"], color=plt.cm.Greens(top_rules["confidence"]))
         ax.set_xlabel("Confidence")
         ax.set_ylabel("Consequent Item")
         st.pyplot(fig)
 
         st.markdown("### 📈 Trend Chart")
-        months = list(calendar.month_name)[1:]
+        month_order = list(calendar.month_name)[1:]
         tr = (
-            merged_df
-            .query("antecedent == @selected and consequent in @list(top_rules.consequent)")
+            merged_df.loc[
+                (merged_df["antecedent"]==selected_item)
+                & (merged_df["consequent"].isin(top_rules["consequent"]))
+            ]
             .drop_duplicates(subset=["Month","consequent"])
             .set_index("Month")
-            .reindex(months)
+            .reindex(month_order)
             .reset_index()
         )
         if not tr.empty:
             fig, ax = plt.subplots()
             for cons in tr["consequent"].unique():
-                temp = tr[tr["consequent"] == cons]
+                temp = tr[tr["consequent"]==cons]
                 ax.plot(temp["Month"], temp["confidence"], marker="o", label=cons)
             ax.set_ylabel("Confidence")
-            ax.set_xticklabels(months, rotation=45, ha="right")
+            ax.set_xticklabels(month_order, rotation=45, ha="right")
             ax.legend(fontsize="small", bbox_to_anchor=(1.05,1))
             st.pyplot(fig)
 
 
-#
-# ─── DOWNLOAD TOP RECS ───────────────────────────────────────────────────────────
-#
+# ─── 5) DOWNLOAD TOP RECS ────────────────────────────────────────────────────────
 
 if not top_rules.empty:
     st.download_button(
