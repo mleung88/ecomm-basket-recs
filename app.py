@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import calendar
+import numpy as np
+
 
 # 1) LOAD & CACHE RULES
 @st.cache_data
