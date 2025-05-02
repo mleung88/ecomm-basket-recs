@@ -34,11 +34,28 @@ def aggregate_sales_data(sales_data):
         .reset_index()
         )
     return sales_data
-    
+
 # Merge rule data and sales data
 def merge_data(rules_df, sales_df):
-    # Merge the rules dataframe with the sales dataframe
-    merged_df = pd.merge(rules_df, sales_df, how="left", left_on="antecedent", right_on="Description")
+    # Aggregate sales data
+    sales_data['TotalSpent'] = sales_data['Quantity'] * sales_data['UnitPrice']
+    sales_data = (
+        sales_data.groupby('Description')
+                  .agg(
+                      Total_Items=('Quantity', 'sum'),
+                      Price=('UnitPrice', 'mean'),
+                      Total_Spent=('TotalSpent', 'sum')
+                  )
+                  .reset_index()
+    )
+    
+    # Now merge the aggregated sales data with the rules data
+    merged_df = pd.merge(rules_df, sales_data, how="left", left_on="antecedent", right_on="Description")
+    
+    # Check if the merge was successful
+    if 'Total_Spent' not in merged_df.columns:
+        st.error("'Total_Spent' column is missing from the merged dataframe.")
+    
     return merged_df
 
 def get_recommendations(df, item, month, rec_type, min_conf, min_lift, min_support, top_n, sort_by, bidirectional, sku_filter, min_conseq_freq):
@@ -85,8 +102,6 @@ sales_df = aggregate_sales_data(sales_df)
 
 # Merge the rules with the sales data
 merged_df = merge_data(rules_df, sales_df)
-st.dataframe(merged_df[['consequent', 'support', 'confidence', 'lift', 'Total_Items', 'Total_Spent']])
-
 
 # Sidebar filters
 with st.sidebar:
