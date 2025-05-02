@@ -151,8 +151,12 @@ with col2:
         trend_base = rules[ rules.antecedent==selected ]
 
         # only include our top consequents  
-        trend_base = trend_base[ trend_base.consequent.isin(top_rules.consequent) ]
-
+        trend_base = (
+            raw_trend_df
+              .groupby(["Month","consequent"], as_index=False)
+              .confidence
+              .mean()
+        )
         if not trend_base.empty:
             fig, ax = plt.subplots()
             for cons in trend_base.consequent.unique():
