@@ -16,29 +16,13 @@ def load_sales_data():
     sales_df = pd.read_csv("Filter.csv")  # Ensure Filter.csv is available
     return sales_df
 
-# Add Total Spent
+# Add Total Spent to sales data
 def aggregate_sales_data(sales_data):
     # Check if 'TotalSpent' column exists, if not, calculate it
     if 'TotalSpent' not in sales_data.columns:
         sales_data['TotalSpent'] = sales_data['Quantity'] * sales_data['UnitPrice']
-     
-    if not all(col in sales_data.columns for col in ['Total_Items', 'Price', 'Total_Spent']):
-        sales_data = (
-            sales_data
-            .groupby('Description')
-            .agg(
-                Total_Items = ('Quantity',  'sum'),
-                Price = ('UnitPrice', 'mean'),
-                Total_Spent = ('TotalSpent', 'sum')  # Calculate Total_Spent using the existing TotalSpent column
-            )
-        .reset_index()
-        )
-    return sales_data
-
-# Merge rule data and sales data
-def merge_data(rules_df, sales_df):
-    # Aggregate sales data
-    sales_data['TotalSpent'] = sales_data['Quantity'] * sales_data['UnitPrice']
+    
+    # Aggregate sales data by product description
     sales_data = (
         sales_data.groupby('Description')
                   .agg(
@@ -48,11 +32,19 @@ def merge_data(rules_df, sales_df):
                   )
                   .reset_index()
     )
+    return sales_data
+
+# Merge rule data and sales data
+def merge_data(rules_df, sales_df):
+    sales_data = aggregate_sales_data(sales_df)
     
-    # Now merge the aggregated sales data with the rules data
+    # Merge the rules data with the sales data
     merged_df = pd.merge(rules_df, sales_data, how="left", left_on="antecedent", right_on="Description")
     
-    # Check if the merge was successful
+    # Remove duplicates based on 'antecedent' and 'consequent'
+    merged_df = merged_df.drop_duplicates(subset=["antecedent", "consequent"], keep="first")
+    
+    # Ensure 'Total_Spent' column is present after merge
     if 'Total_Spent' not in merged_df.columns:
         st.error("'Total_Spent' column is missing from the merged dataframe.")
     
@@ -93,17 +85,6 @@ def filter_top_rules(df, item, bidirectional, top_n, sort_by):
 st.set_page_config(page_title="E-commerce Basket Recommender", layout="wide")
 st.title("📦 E-commerce Recommendation Dashboard")
 
-# Load rules and sales data before sidebar
-rules_df = load_rules()
-sales_df = load_sales_data()
-
-# Aggregate the sales data
-sales_df = aggregate_sales_data(sales_df)
-
-# Merge the rules with the sales data
-merged_df = merge_data(rules_df, sales_df)
-
-# Sidebar filters
 with st.sidebar:
     st.header("🔧 Filters")
     month = st.selectbox("📅 Filter by Month", ["Any"] + list(calendar.month_name)[1:])
@@ -119,20 +100,23 @@ with st.sidebar:
     sort_by = st.radio("📌 Sort By", ["confidence", "lift"])
     group_by = st.radio("🗂️ Group By", ["None", "type", "Month"])
 
-# Filter recommendations based on user inputs
+rules_df = load_rules()
+sales_df = load_sales_data()
+
+# Merge rule data and sales data
+merged_data = merge_data(rules_df, sales_df)
+
 filtered_df, available_items = get_recommendations(
-    merged_df, None, month, rec_type, min_conf, min_lift, min_support,
+    merged_data, None, month, rec_type, min_conf, min_lift, min_support,
     top_n, sort_by, bidirectional, sku_filter, min_conseq_freq
 )
 
-# Item selection
 selected_item = st.selectbox("🛍️ Select a Product to Analyze", available_items)
 top_rules = filter_top_rules(filtered_df, selected_item, bidirectional, top_n, sort_by)
 
 if keyword:
     top_rules = top_rules[top_rules['consequent'].str.contains(keyword, case=False, na=False)]
 
-# Columns to display results
 col1, col2 = st.columns([2, 1])
 
 with col1:
@@ -162,7 +146,7 @@ with col2:
 
         st.markdown("### 📈 Trend Chart")
         month_order = list(calendar.month_name)[1:]
-        trend_data = merged_df[(merged_df['antecedent'] == selected_item) & (merged_df['consequent'].isin(top_rules['consequent']))]
+        trend_data = merged_data[(merged_data['antecedent'] == selected_item) & (merged_data['consequent'].isin(top_rules['consequent']))]
 
     if not trend_data.empty:
         # Drop duplicates before reindexing to prevent errors
