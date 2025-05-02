@@ -144,7 +144,7 @@ with col2:
         ax.set_xlabel("Confidence")
         st.pyplot(fig)
 
-        # 📈 Trend chart: **this** is the fixed bit
+        # 📈 Trend chart:
         months = list(calendar.month_name)[1:]
         trend_df = rules_sales.loc[
             (rules_sales["antecedent"]==selected) &
