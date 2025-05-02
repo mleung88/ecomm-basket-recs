@@ -85,6 +85,8 @@ sales_df = aggregate_sales_data(sales_df)
 
 # Merge the rules with the sales data
 merged_df = merge_data(rules_df, sales_df)
+st.dataframe(merged_df[['consequent', 'support', 'confidence', 'lift', 'Total_Items', 'Total_Spent']])
+
 
 # Sidebar filters
 with st.sidebar:
