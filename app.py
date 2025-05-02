@@ -28,18 +28,10 @@ def load_sales_data():
           )
           .reset_index()
     )
-
 # Merge rule data and sales data
 def merge_data(rules_df, sales_df):
     merged_df = pd.merge(rules_df, sales_df, how="left", left_on="antecedent", right_on="Description")
-    # Check if 'Total_Spent' column exists in merged data
-    if 'Total_Spent' not in merged_df.columns:
-        st.error("'Total_Spent' column is missing from the merged dataframe.")
     return merged_df
-
-# Show data in the app
-st.dataframe(merged_df[['consequent', 'support', 'confidence', 'lift', 'Total_Items', 'Total_Spent']])
-
 
 def get_recommendations(df, item, month, rec_type, min_conf, min_lift, min_support, top_n, sort_by, bidirectional, sku_filter, min_conseq_freq):
     if month != "Any":
