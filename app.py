@@ -132,48 +132,6 @@ with col1:
                 f"qty: `{int(r.Total_Items)}`, spent: `${r.Total_Spent:,.2f}`)"
             )
 
-with col2:
-    if not top_rules.empty:
-        # confidence bar
-        st.markdown("### 📊 Confidence Bar Chart")
-        fig, ax = plt.subplots()
-        bars = ax.barh(
-            top_rules.consequent,
-            top_rules.confidence,
-            color=plt.cm.Greens(top_rules.confidence)
-        )
-        ax.set_xlabel("Confidence"); ax.set_ylabel("Consequent Item")
-        st.pyplot(fig)
-
-        # ─── Trend chart ──────────────
-        st.markdown("### 📈 Monthly Confidence Trends")
-        month_order = list(calendar.month_name)[1:]
-        trend_base = rules[ rules.antecedent==selected ]
-
-        # only include our top consequents  
-        trend_base = (
-            raw_trend_df
-              .groupby(["Month","consequent"], as_index=False)
-              .confidence
-              .mean()
-        )
-        if not trend_base.empty:
-            fig, ax = plt.subplots()
-            for cons in trend_base.consequent.unique():
-                sub = trend_base[trend_base.consequent==cons]
-                # group down to one value per month
-                s = (
-                    sub
-                    .groupby("Month")["confidence"]
-                    .mean()
-                    .reindex(month_order)
-                )
-                ax.plot(month_order, s, marker="o", label=cons)
-            ax.set_ylabel("Confidence")
-            ax.set_title(f"Trends for '{selected}'")
-            ax.legend(bbox_to_anchor=(1.0,1.0))
-            st.pyplot(fig)
-
 # download CSV
 if not top_rules.empty:
     st.download_button(
