@@ -86,8 +86,16 @@ with st.sidebar:
 rules_df = load_rules()
 sales_df = load_sales_data()
 
-# Merge rules with sales data
-merged_data = merge_data(rules_df, sales_df)
+# Merge rule data and sales data
+def merge_data(rules_df, sales_df):
+    merged_df = pd.merge(rules_df, sales_df, how="left", left_on="antecedent", right_on="Description")
+    # Check if 'Total_Spent' column exists in merged data
+    if 'Total_Spent' not in merged_df.columns:
+        st.error("'Total_Spent' column is missing from the merged dataframe.")
+    return merged_df
+
+# Show data in the app
+st.dataframe(merged_df[['consequent', 'support', 'confidence', 'lift', 'Total_Items', 'Total_Spent']])
 
 filtered_df, available_items = get_recommendations(
     merged_data, None, month, rec_type, min_conf, min_lift, min_support,
