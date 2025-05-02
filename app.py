@@ -12,16 +12,14 @@ def load_rules():
 @st.cache_data
 def load_and_aggregate_sales():
     df = pd.read_csv("Filter.csv")
-    # compute row-level total spent
     df["Total_Spent_Row"] = df["Quantity"] * df["UnitPrice"]
-    # aggregate per product description
     agg = (
         df
         .groupby("Description", as_index=False)
         .agg(
-            Total_Items=("Quantity", "sum"),
-            Price=("UnitPrice", "mean"),
-            Total_Spent=("Total_Spent_Row", "sum"),
+            Total_Items=("Quantity","sum"),
+            Price=("UnitPrice","mean"),
+            Total_Spent=("Total_Spent_Row","sum"),
         )
     )
     return agg
@@ -31,7 +29,7 @@ def get_recommendations(df, month, rec_type, min_conf, min_lift, min_sup, min_fr
     d = df.copy()
     if month != "Any":
         d = d[d["Month"] == month]
-    if rec_type != "All" and "type" in d:
+    if rec_type != "All" and "type" in d.columns:
         d = d[d["type"] == rec_type]
     d = d[
         (d["confidence"] >= min_conf) &
@@ -40,28 +38,28 @@ def get_recommendations(df, month, rec_type, min_conf, min_lift, min_sup, min_fr
     ]
     if sku_filter:
         d = d[d["SKU"].astype(str).str.contains(sku_filter, case=False)]
-    if "consequent_count" in d:
+    if "consequent_count" in d.columns:
         d = d[d["consequent_count"] >= min_freq]
-    d = d.drop_duplicates(["antecedent","consequent"])
+    d = d.drop_duplicates(subset=["antecedent","consequent"])
     counts = d["antecedent"].value_counts()
-    valid_products = counts[counts >= top_n].index.sort_values().tolist()
-    return d, valid_products
+    valid = counts[counts >= top_n].index.sort_values().tolist()
+    return d, valid
 
 # 4) FILTER TOP-N RULES FOR SELECTED ITEM
 def filter_top_rules(df, selected, top_n, sort_by, bidir):
     d = df.copy()
     if bidir:
-        d = d[(d["antecedent"] == selected) | (d["consequent"] == selected)]
+        d = d[(d["antecedent"]==selected) | (d["consequent"]==selected)]
     else:
-        d = d[d["antecedent"] == selected]
+        d = d[d["antecedent"]==selected]
     d = d[d["antecedent"] != d["consequent"]]
     return d.sort_values(sort_by, ascending=False).head(top_n)
 
-# --- STREAMLIT APP ---
+# --- STREAMLIT UI ---
 st.set_page_config(page_title="E-commerce Recommendation Dashboard", layout="wide")
 st.title("📦 E-commerce Recommendation Dashboard")
 
-# SIDEBAR CONTROLS
+# SIDEBAR
 with st.sidebar:
     st.header("⚙️ Rule thresholds")
     month      = st.selectbox("📅 Filter by Month", ["Any"] + list(calendar.month_name)[1:])
@@ -75,12 +73,12 @@ with st.sidebar:
     top_n      = st.slider("🔢 Top N Recs", 1,20,10)
     sort_by    = st.radio("📌 Sort By", ["confidence","lift"])
 
-# LOAD DATA
+# LOAD
 rules_df  = load_rules()
 sales_agg = load_and_aggregate_sales()
 
 # MERGE sales METRICS ONTO EACH CONSEQUENT
-rules_with_sales = pd.merge(
+rules_sales = pd.merge(
     rules_df,
     sales_agg,
     left_on="consequent",
@@ -88,20 +86,17 @@ rules_with_sales = pd.merge(
     how="left"
 ).drop(columns=["Description"])
 
-# GET FILTERED RULES + AVAILABLE PRODUCTS
+# AVAILABLE PRODUCTS
 filtered_df, products = get_recommendations(
-    rules_with_sales,
-    month, rec_type, min_conf, min_lift, min_sup, min_freq,
-    top_n, bidir, sku_filter
+    rules_sales, month, rec_type, min_conf,
+    min_lift, min_sup, min_freq, top_n, bidir, sku_filter
 )
 
-# PRODUCT SELECTION
+# SELECT PRODUCT
 selected = st.selectbox("🛍️ Select a Product to Analyze", products)
 
-# TOP RULES FOR THIS PRODUCT
+# TOP RULES + THEIR SALES METRICS
 top_rules = filter_top_rules(filtered_df, selected, top_n, sort_by, bidir)
-
-# MERGE AGAIN TO ENSURE CONSEQUENT-SPECIFIC METRICS
 if not top_rules.empty:
     top_with_sales = pd.merge(
         top_rules,
@@ -125,11 +120,10 @@ with col1:
         ]],
         use_container_width=True
     )
-
     if not top_with_sales.empty:
         st.markdown("### 📘 Natural Language Rules")
         for _, r in top_with_sales.iterrows():
-            verb = "buys" if r["antecedent"] == selected else "is also bought with"
+            verb = "buys" if r["antecedent"]==selected else "is also bought with"
             st.markdown(
                 f"- If someone **{verb}** `{selected}`, they often buy **{r['consequent']}** "
                 f"(conf: `{r['confidence']:.2f}`, lift: `{r['lift']:.2f}`, "
@@ -138,43 +132,44 @@ with col1:
 
 with col2:
     if not top_with_sales.empty:
-        # CONFIDENCE BAR CHART
+        # confidence bar
         st.markdown("### 📊 Confidence Bar Chart")
         fig, ax = plt.subplots()
         top_with_sales.sort_values("confidence").plot.barh(
-            x="consequent", y="confidence", legend=False, ax=ax
+            x="consequent", y="confidence",
+            legend=False, ax=ax
         )
         ax.set_xlabel("Confidence")
         st.pyplot(fig)
 
-        # MONTHLY TREND CHART WITH PIVOT_TABLE MAX
-        st.markdown("### 📈 Monthly Confidence Trend")
+        # 📈 Trend chart: **this** is the fixed bit
         months = list(calendar.month_name)[1:]
-        trend_df = rules_with_sales[
-            (rules_with_sales["antecedent"] == selected)
-            & (rules_with_sales["consequent"].isin(top_with_sales["consequent"]))
+        trend_df = rules_sales.loc[
+            (rules_sales["antecedent"]==selected) &
+            (rules_sales["consequent"].isin(top_with_sales["consequent"])),
+            ["Month","consequent","confidence"]
         ]
         if not trend_df.empty:
-            pivot = (
+            collapsed = (
                 trend_df
-                .pivot_table(
-                    index="Month",
-                    columns="consequent",
-                    values="confidence",
-                    aggfunc="max"     # collapse duplicates
-                )
-                .reindex(months)      # safe now
+                .groupby(["Month","consequent"], as_index=False)
+                .agg({"confidence":"max"})
+            )
+            wide = (
+                collapsed
+                .pivot(index="Month", columns="consequent", values="confidence")
+                .reindex(months)
             )
             fig, ax = plt.subplots()
-            for col in pivot.columns:
-                ser = pivot[col].dropna()
-                ax.plot(ser.index, ser.values, marker="o", label=col)
+            for c in wide.columns:
+                s = wide[c].dropna()
+                ax.plot(s.index, s.values, marker="o", label=c)
             ax.set_ylabel("Confidence")
-            ax.set_xticklabels(months, rotation=45)
+            ax.set_xticklabels(months, rotation=45, ha="right")
             ax.legend(fontsize="small", bbox_to_anchor=(1.02,1))
             st.pyplot(fig)
 
-# CSV DOWNLOAD
+# DOWNLOAD CSV
 if not top_with_sales.empty:
     st.download_button(
         "📥 Download Recommendations (CSV)",
