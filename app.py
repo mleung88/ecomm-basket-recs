@@ -21,20 +21,20 @@ def aggregate_sales_data(sales_data):
     # Check if 'TotalSpent' column exists, if not, calculate it
     if 'TotalSpent' not in sales_data.columns:
         sales_data['TotalSpent'] = sales_data['Quantity'] * sales_data['UnitPrice']
-    
-    # Now proceed with the aggregation
-    sales_data = (
-        sales_data
-        .groupby('Description')
-        .agg(
-            Total_Items = ('Quantity',  'sum'),
-            Price = ('UnitPrice', 'mean'),
-            Total_Spent = ('TotalSpent', 'sum')  # Calculate Total_Spent using the existing TotalSpent column
-        )
+     
+    if not all(col in sales_data.columns for col in ['Total_Items', 'Price', 'Total_Spent']):
+        sales_data = (
+            sales_data
+            .groupby('Description')
+            .agg(
+                Total_Items = ('Quantity',  'sum'),
+                Price = ('UnitPrice', 'mean'),
+                Total_Spent = ('TotalSpent', 'sum')  # Calculate Total_Spent using the existing TotalSpent column
+            )
         .reset_index()
-    )
+        )
     return sales_data
-
+    
 # Merge rule data and sales data
 def merge_data(rules_df, sales_df):
     # Merge the rules dataframe with the sales dataframe
