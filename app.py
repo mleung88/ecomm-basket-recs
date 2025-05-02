@@ -88,14 +88,23 @@ sales_df = load_sales_data()
 
 # Merge rule data and sales data
 def merge_data(rules_df, sales_df):
+    # First check if 'Total_Spent' exists in sales data
+    if 'Total_Spent' not in sales_df.columns:
+        sales_df['Total_Spent'] = sales_df['Quantity'] * sales_df['UnitPrice']  # Compute Total_Spent
+        st.success("Total_Spent column successfully added!")
+        
+    # Perform merge
     merged_df = pd.merge(rules_df, sales_df, how="left", left_on="antecedent", right_on="Description")
-    # Check if 'Total_Spent' column exists in merged data
+
+    # Check if Total_Spent is in the merged data
     if 'Total_Spent' not in merged_df.columns:
-        st.error("'Total_Spent' column is missing from the merged dataframe.")
+        st.error("Total_Spent column is missing from the merged dataframe.")
+
     return merged_df
 
-# Show data in the app
-#st.dataframe(merged_df[['consequent', 'support', 'confidence', 'lift', 'Total_Items', 'Total_Spent']])
+# Show the merged data (you can modify this line to display only the columns you need)
+st.dataframe(merged_df[['consequent', 'support', 'confidence', 'lift', 'Total_Items', 'Total_Spent']])
+
 
 filtered_df, available_items = get_recommendations(
     merged_data, None, month, rec_type, min_conf, min_lift, min_support,
