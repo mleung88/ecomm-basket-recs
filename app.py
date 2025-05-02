@@ -146,31 +146,47 @@ with col1:
     else:
         st.warning("No recs for these filters.")
 
+# … after you have top_rules …
+
 with col2:
     if not top_rules.empty:
-        st.markdown("### 📊 Confidence")
-        fig,ax=plt.subplots()
-        ax.barh(top_rules["consequent"],top_rules["confidence"],color=plt.cm.Greens(top_rules["confidence"]))
+        st.markdown("### 📊 Confidence Bar Chart")
+        fig, ax = plt.subplots()
+        plot_data = top_rules.sort_values("confidence", ascending=True)
+        ax.barh(plot_data["consequent"], plot_data["confidence"],
+                color=plt.cm.Greens(plot_data["confidence"]))
+        ax.set_xlabel("Confidence")
         st.pyplot(fig)
 
-        st.markdown("### 📈 Trend")
+        st.markdown("### 📈 Trend Chart")
         months = list(calendar.month_name)[1:]
-        tr = (
-            merged_df[
-                (merged_df["antecedent"]==selected)
-               &(merged_df["consequent"].isin(top_rules["consequent"]))
-            ]
-            .drop_duplicates(["Month","consequent"])
-            .set_index("Month")
-            .reindex(months)
-            .reset_index()
-        )
-        if not tr.empty:
-            fig,ax=plt.subplots()
-            for cons in tr["consequent"].unique():
-                tmp=tr[tr["consequent"]==cons]
-                ax.plot(tmp["Month"],tmp["confidence"],marker="o",label=cons)
-            ax.legend(fontsize="small", bbox_to_anchor=(1.05,1))
+
+        # filter trend data
+        trend_df = merged_df[
+            (merged_df["antecedent"] == selected)
+            & (merged_df["consequent"].isin(top_rules["consequent"]))
+        ]
+
+        if not trend_df.empty:
+            # drop exact duplicates
+            trend_df = trend_df.drop_duplicates(subset=["Month", "consequent"])
+
+            # pivot so each consequent is its own column
+            pivot = (
+                trend_df
+                  .pivot(index="Month", columns="consequent", values="confidence")
+                  .reindex(months)        # now safe because Month is unique index
+            )
+
+            fig, ax = plt.subplots()
+            for cons in pivot.columns:
+                # if an entire column is NaN (no data), skip it
+                if pivot[cons].notna().any():
+                    ax.plot(pivot.index, pivot[cons], marker="o", label=cons)
+
+            ax.set_ylabel("Confidence")
+            ax.set_title(f"Monthly confidence for '{selected}'")
+            ax.legend(fontsize="small", bbox_to_anchor=(1.02, 1))
             plt.xticks(rotation=45)
             st.pyplot(fig)
 
