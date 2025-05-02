@@ -42,7 +42,7 @@ def merge_data(rules_df, sales_df):
     merged_df = pd.merge(rules_df, sales_data, how="left", left_on="antecedent", right_on="Description")
     
     # Remove duplicates based on 'antecedent' and 'consequent'
-    merged_df = merged_df.drop_duplicates(subset=["antecedent", "consequent"], keep="first")
+    merged_df = merged_df.drop_duplicates(subset=["antecedent", "consequent"], keep="last")
     
     # Ensure 'Total_Spent' column is present after merge
     if 'Total_Spent' not in merged_df.columns:
