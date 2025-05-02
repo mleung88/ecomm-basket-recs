@@ -17,19 +17,29 @@ def load_sales_data():
     return sales_df
 
 # Add Total Spent
-    sales_data['TotalSpent'] = sales_data['Quantity'] * sales_data['UnitPrice']
-    sales_data = (
-        sales_data
-          .groupby('Description')
-          .agg(
-             Total_Items = ('Quantity',  'sum'),
-             Price = ('UnitPrice', 'mean'),
-             Total_Spent = ('TotalSpent', 'sum'), # Calculate Total_Spent using the existing TotalSpent column
-          )
-          .reset_index()
-    )
+def aggregate_sales_data(sales_data):
+    # Check if 'TotalSpent' column exists, if not, calculate it
+    if 'TotalSpent' not in sales_data.columns:
+        sales_data['TotalSpent'] = sales_data['Quantity'] * sales_data['UnitPrice']
+    
+    # Now proceed with the aggregation
+    if not all(col in sales_data.columns for col in ['Total_Items', 'Price', 'Total_Spent']):
+        # Group & aggregate
+        sales_data = (
+            sales_data
+            .groupby('Description')
+            .agg(
+                Total_Items = ('Quantity',  'sum'),
+                Price = ('UnitPrice', 'mean'),
+                Total_Spent = ('TotalSpent', 'sum')  # Calculate Total_Spent using the existing TotalSpent column
+            )
+            .reset_index()
+        )
+    return sales_data
+
 # Merge rule data and sales data
 def merge_data(rules_df, sales_df):
+    # Merge the rules dataframe with the sales dataframe
     merged_df = pd.merge(rules_df, sales_df, how="left", left_on="antecedent", right_on="Description")
     return merged_df
 
@@ -86,28 +96,17 @@ with st.sidebar:
 rules_df = load_rules()
 sales_df = load_sales_data()
 
+# Aggregate the sales data
+sales_df = aggregate_sales_data(sales_df)
+
 # Merge rule data and sales data
-def merge_data(rules_df, sales_df):
-    # First check if 'Total_Spent' exists in sales data
-    if 'Total_Spent' not in sales_df.columns:
-        sales_df['Total_Spent'] = sales_df['Quantity'] * sales_df['UnitPrice']  # Compute Total_Spent
-        st.success("Total_Spent column successfully added!")
-        
-    # Perform merge
-    merged_df = pd.merge(rules_df, sales_df, how="left", left_on="antecedent", right_on="Description")
+merged_df = merge_data(rules_df, sales_df)
 
-    # Check if Total_Spent is in the merged data
-    if 'Total_Spent' not in merged_df.columns:
-        st.error("Total_Spent column is missing from the merged dataframe.")
-
-    return merged_df
-
-# Show the merged data (you can modify this line to display only the columns you need)
+# Show the merged data
 st.dataframe(merged_df[['consequent', 'support', 'confidence', 'lift', 'Total_Items', 'Total_Spent']])
 
-
 filtered_df, available_items = get_recommendations(
-    merged_data, None, month, rec_type, min_conf, min_lift, min_support,
+    merged_df, None, month, rec_type, min_conf, min_lift, min_support,
     top_n, sort_by, bidirectional, sku_filter, min_conseq_freq
 )
 
@@ -146,7 +145,7 @@ with col2:
 
         st.markdown("### 📈 Trend Chart")
         month_order = list(calendar.month_name)[1:]
-        trend_data = merged_data[(merged_data['antecedent'] == selected_item) & (merged_data['consequent'].isin(top_rules['consequent']))]
+        trend_data = merged_df[(merged_df['antecedent'] == selected_item) & (merged_df['consequent'].isin(top_rules['consequent']))]
 
     if not trend_data.empty:
         # Drop duplicates before reindexing to prevent errors
