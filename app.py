@@ -1,33 +1,4 @@
-import streamlit as st
-import pandas as pd
-import matplotlib.pyplot as plt
-import calendar
-import os
 
-# ─── 1) LOAD CSVs ────────────────────────────────────────────────────────────────
-@st.cache_data
-def load_rules(path="rules_final.csv"):
-    return pd.read_csv(path)
-
-@st.cache_data
-def load_raw_sales(path="Filter.csv"):
-    return pd.read_csv(path)
-
-# ─── 2) AGGREGATE SALES ──────────────────────────────────────────────────────────
-@st.cache_data
-def aggregate_sales(raw):
-    # ensure TotalSpent exists
-    raw = raw.copy()
-    raw["TotalSpent"] = raw["Quantity"] * raw["UnitPrice"]
-    agg = (
-        raw
-        .groupby("Description", as_index=False)
-        .agg(
-            Total_Items = ("Quantity", "sum"),
-            Price       = ("UnitPrice", "mean"),
-            Total_Spent = ("TotalSpent", "sum"),
-        )
-    )
     return agg
 
 # ─── 3) GET RECOMMENDATIONS ─────────────────────────────────────────────────────
