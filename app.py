@@ -95,7 +95,7 @@ def merge_data(rules_df, sales_df):
     return merged_df
 
 # Show data in the app
-st.dataframe(merged_df[['consequent', 'support', 'confidence', 'lift', 'Total_Items', 'Total_Spent']])
+#st.dataframe(merged_df[['consequent', 'support', 'confidence', 'lift', 'Total_Items', 'Total_Spent']])
 
 filtered_df, available_items = get_recommendations(
     merged_data, None, month, rec_type, min_conf, min_lift, min_support,
