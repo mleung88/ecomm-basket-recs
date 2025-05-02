@@ -16,41 +16,23 @@ def load_sales_data():
     sales_df = pd.read_csv("Filter.csv")  # Ensure Filter.csv is available
     return sales_df
 
-# Add Total Spent if not present
-def add_total_spent(sales_data):
-    if 'TotalSpent' not in sales_data.columns:
-        sales_data['TotalSpent'] = sales_data['Quantity'] * sales_data['UnitPrice']
-    return sales_data
-
-# Aggregate sales data by Description
-def aggregate_sales_data(sales_data):
-    # Ensure 'TotalSpent' exists or calculate it
-    if 'TotalSpent' not in sales_data.columns:
-        sales_data['TotalSpent'] = sales_data['Quantity'] * sales_data['UnitPrice']
-        
-    # Aggregation of total items, price, and total spent
+# Add Total Spent
+    sales_data['TotalSpent'] = sales_data['Quantity'] * sales_data['UnitPrice']
     sales_data = (
-        sales_data.groupby('Description')
-        .agg(
-            Total_Items=('Quantity', 'sum'),
-            Price=('UnitPrice', 'mean'),
-            Total_Spent=('TotalSpent', 'sum')  # Calculate Total_Spent using the existing TotalSpent column
-        )
-        .reset_index()
+        sales_data
+          .groupby('Description')
+          .agg(
+             Total_Items = ('Quantity',  'sum'),
+             Price = ('UnitPrice', 'mean'),
+             Total_Spent = ('TotalSpent', 'sum'), # Calculate Total_Spent using the existing TotalSpent column
+          )
+          .reset_index()
     )
-    return sales_data
-
-# Merge the rules data with the sales data
+# Merge rule data and sales data
 def merge_data(rules_df, sales_df):
-    # Aggregate sales data
-    sales_data = aggregate_sales_data(sales_df)
-
-    # Merge rules with sales data
-    merged_df = pd.merge(rules_df, sales_data, how="left", left_on="antecedent", right_on="Description")
+    merged_df = pd.merge(rules_df, sales_df, how="left", left_on="antecedent", right_on="Description")
     return merged_df
 
-
-# Get recommendations based on filters
 def get_recommendations(df, item, month, rec_type, min_conf, min_lift, min_support, top_n, sort_by, bidirectional, sku_filter, min_conseq_freq):
     if month != "Any":
         df = df[df['Month'] == month]
@@ -73,7 +55,6 @@ def get_recommendations(df, item, month, rec_type, min_conf, min_lift, min_suppo
 
     return df, filtered_items
 
-# Filter top rules based on item and other filters
 def filter_top_rules(df, item, bidirectional, top_n, sort_by):
     if bidirectional:
         df = df[(df['antecedent'] == item) | (df['consequent'] == item)].copy()
@@ -102,20 +83,17 @@ with st.sidebar:
     sort_by = st.radio("📌 Sort By", ["confidence", "lift"])
     group_by = st.radio("🗂️ Group By", ["None", "type", "Month"])
 
-# Load data
 rules_df = load_rules()
 sales_df = load_sales_data()
 
-# Merge the rules data with the sales data
+# Merge rules with sales data
 merged_data = merge_data(rules_df, sales_df)
 
-# Get filtered recommendations
 filtered_df, available_items = get_recommendations(
     merged_data, None, month, rec_type, min_conf, min_lift, min_support,
     top_n, sort_by, bidirectional, sku_filter, min_conseq_freq
 )
 
-# Product selection
 selected_item = st.selectbox("🛍️ Select a Product to Analyze", available_items)
 top_rules = filter_top_rules(filtered_df, selected_item, bidirectional, top_n, sort_by)
 
@@ -137,7 +115,7 @@ with col1:
         st.markdown("### 📘 Natural Language Rules")
         for _, row in top_rules.iterrows():
             direction = "buys" if row['antecedent'] == selected_item else "is also bought with"
-            st.markdown(f"- If someone **{direction}** `{selected_item}`, they often buy **{row['consequent']}** (conf: `{row['confidence']:.2f}`, lift: `{row['lift']:.2f}`)")
+            st.markdown(f"- If someone **{direction}** `{selected_item}`, they often buy **{row['consequent']}** (conf: `{row['confidence']:.2f}`, lift: `{row['lift']:.2f}`, total items: `{row['Total_Items']}`, total spent: `{row['Total_Spent']}`)")
 
 with col2:
     if not top_rules.empty:
