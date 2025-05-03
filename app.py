@@ -38,8 +38,7 @@ def merge_rules_sales(rules, sales_summary):
         left_on="antecedent",
         right_on="Description"
     )
-    merged = merged.drop(columns=["Description"], errors="ignore")
-    return merged
+    return merged.drop(columns=["Description"], errors="ignore")
 
 # Load and merge data
 rules_df      = load_rules()
@@ -70,7 +69,7 @@ def get_filtered_rules(df):
     if month != "Any": d = d[d["Month"] == month]
     if rec_type != "All" and "type" in d.columns: d = d[d["type"] == rec_type]
     d = d[(d["confidence"] >= min_conf) & (d["lift"] >= min_lift) & (d["support"] >= min_sup)]
-    d = d.drop_duplicates(subset=["antecedent","consequent"]) 
+    d = d.drop_duplicates(subset=["antecedent","consequent"]).copy()
     d["consequent_count"] = d.groupby("antecedent")["consequent"].transform("count")
     d = d[d["consequent_count"] >= min_count]
     if sku_filter: d = d[d["SKU"].astype(str).str.contains(sku_filter, case=False)]
@@ -84,10 +83,11 @@ def get_top_for_item(df, selected):
     top = top[top["antecedent"] != top["consequent"]]
     top = top.sort_values(sort_by, ascending=False).head(top_n)
     if text_filt: top = top[top["consequent"].str.contains(text_filt, case=False, na=False)]
+    # Ensure fresh metrics merge
     top = top.drop(columns=["Total_Items","Price","Total_Spent","Description"], errors="ignore")
     top = (
         top.merge(
-            sales_summary[["Description","Total_Items","Price","Total_Spent"]],
+            sales_summary[ ["Description","Total_Items","Price","Total_Spent"] ],
             how="left", left_on="consequent", right_on="Description"
         )
         .drop(columns=["Description"], errors="ignore")
@@ -99,7 +99,7 @@ filtered_df     = get_filtered_rules(merged_df)
 available_items = sorted(filtered_df["antecedent"].unique())
 
 st.subheader("🛍️ Select a Product to Analyze")
-selected_item = st.selectbox("", available_items, key="select")
+selected_item = st.selectbox("", available_items, key="select", label_visibility="hidden")
 
 top_rules = get_top_for_item(filtered_df, selected_item)
 
@@ -107,30 +107,39 @@ if top_rules.empty:
     st.warning("No recommendations for these filters.")
 else:
     col1, col2 = st.columns([2,1])
+    # Configure column display settings
+    column_config = {
+        "consequent": st.column_config.Column(header="Item", width="200px", text_align="left"),
+        "support":    st.column_config.Column(format=".2%",  width="80px"),
+        "confidence": st.column_config.Column(format=".2%",  width="80px"),
+        "lift":       st.column_config.Column(format=".2f",  width="80px"),
+        "Total_Items":st.column_config.Column(format="d",    width="80px"),
+        "Price":      st.column_config.Column(format="$,.2f",width="80px"),
+        "Total_Spent":st.column_config.Column(format="$,.2f",width="100px"),
+    }
     with col1:
         st.subheader(f"🔎 Top {len(top_rules)} Recs for `{selected_item}`")
         cols = ["consequent","support","confidence","lift","Total_Items","Price","Total_Spent"]
         if group_by != "None" and group_by in top_rules.columns:
             for grp, grp_df in top_rules.groupby(group_by):
                 st.markdown(f"#### 🔸 {grp}")
-                st.dataframe(grp_df[cols], hide_index=True)
+                st.dataframe(grp_df[cols], hide_index=True, column_config=column_config)
         else:
-            st.dataframe(top_rules[cols], hide_index=True)
+            st.dataframe(top_rules[cols], hide_index=True, column_config=column_config)
 
         st.markdown("### 📘 Natural Language")
         for _, r in top_rules.iterrows():
             st.markdown(
                 f"- People who bought **{selected_item}** also buy **{r['consequent']}** "
-                f"(conf: {r['confidence']:.2f}, lift: {r['lift']:.2f}, "
+                f"(conf: {r['confidence']:.2%}, lift: {r['lift']:.2f}, "
                 f"items: {int(r['Total_Items'])}, spent: ${r['Total_Spent']:.2f})"
             )
 
     with col2:
         st.markdown("### 📊 Confidence Bar Chart")
         fig, ax = plt.subplots(figsize=(6,4))
-        # Use single harmonious shade
         ax.barh(top_rules["consequent"], top_rules["confidence"], color=plt.cm.Greens(0.6))
-        ax.set_xlabel("Confidence"); ax.set_ylabel("Consequent Item")
+        ax.set_xlabel("Confidence"); ax.set_ylabel("Item")
         ax.invert_yaxis()
         st.pyplot(fig)
 
@@ -144,6 +153,7 @@ else:
             )
             ax.plot(month_order, temp["confidence"].fillna(0), marker="o", label=cons)
         ax.set_ylabel("Confidence")
+        ax.grid(True, linestyle='--', alpha=0.3)
         ax.set_xticklabels(month_order, rotation=45, ha="right")
         ax.legend(fontsize="small", bbox_to_anchor=(1.05,1))
         st.pyplot(fig)
