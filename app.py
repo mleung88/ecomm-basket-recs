@@ -6,13 +6,10 @@ import calendar
 st.set_page_config(page_title="E-commerce Recommendation Dashboard", layout="wide")
 st.title("📦 E-commerce Recommendation Dashboard")
 
-
 # ─── 1) LOAD & PREPARE DATA ────────────────────────────────────────────────────
-
 @st.cache_data
 def load_rules():
     return pd.read_csv("rules_final.csv")
-
 
 @st.cache_data
 def load_and_aggregate_sales():
