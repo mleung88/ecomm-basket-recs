@@ -3,26 +3,34 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import calendar
 
+# ─── APP CONFIG ─────────────────────────────────────────────────────────────────
 st.set_page_config(page_title="E-commerce Recommendation Dashboard", layout="wide")
 st.title("📦 E-commerce Recommendation Dashboard")
 
-
 # ─── 1) LOAD & PREPARE DATA ────────────────────────────────────────────────────
-
 @st.cache_data
 def load_rules():
+    """
+    Load precomputed association rules CSV. Rules must contain 'antecedent', 'consequent',
+    'confidence', 'lift', 'support', 'type', 'Month', and 'SKU' columns.
+    """
     return pd.read_csv("rules_final.csv")
-
 
 @st.cache_data
 def load_and_aggregate_sales():
+    """
+    Load raw sales transactions, compute sales summary grouped by SKU and Description.
+    Produces columns: SKU, Description, Total_Items, Price, Total_Spent.
+    """
     df = pd.read_csv("Filter.csv")
+
     # Compute TotalSpent if missing
     if "TotalSpent" not in df.columns:
         df["TotalSpent"] = df["Quantity"] * df["UnitPrice"]
-    # collapse to one row per Description
+
+    # Group by SKU & Description to preserve both
     summary = (
-        df.groupby("Description")
+        df.groupby(["SKU", "Description"], dropna=False)
           .agg(
              Total_Items = ("Quantity",   "sum"),
              Price       = ("UnitPrice",  "mean"),
@@ -32,36 +40,36 @@ def load_and_aggregate_sales():
     )
     return summary
 
-
 @st.cache_data
 def merge_rules_sales(rules, sales_summary):
-    # merge on antecedent → get its sales metrics
+    """
+    Merge rules with sales summary on the antecedent SKU to fetch antecedent metrics.
+    """
     merged = pd.merge(
-        rules, sales_summary,
+        rules,
+        sales_summary,
         how="left",
         left_on="antecedent",
-        right_on="Description"
+        right_on="SKU",
     )
-    # drop the imported Description column (antecedent side)
-    merged = merged.drop(columns=["Description"], errors="ignore")
+    # Drop redundant SKU and Description columns from the antecedent join
+    merged = merged.drop(columns=["SKU", "Description"], errors="ignore")
     return merged
 
-
+# Load data
 rules_df      = load_rules()
 sales_summary = load_and_aggregate_sales()
 merged_df     = merge_rules_sales(rules_df, sales_summary)
 
-
 # ─── 2) SIDEBAR FILTERS ─────────────────────────────────────────────────────────
-
 with st.sidebar:
     st.header("🔧 Filters")
-    month     = st.selectbox("📅 Filter by Month", ["Any"] + list(calendar.month_name)[1:])
-    rec_type  = st.radio("🔀 Rule Type", ["All","color_swap","cross_category"])
-    min_conf  = st.slider("📉 Min Confidence",  0.0, 1.0, 0.4, 0.05)
-    min_lift  = st.slider("📈 Min Lift",        1.0, 5.0, 1.2, 0.1)
-    min_sup   = st.slider("📊 Min Support",     0.0, 0.1, 0.01, 0.005)
-    min_count = st.slider("🛒 Consequent Frequency ≥", 1, 100, 5)
+    month      = st.selectbox("📅 Filter by Month", ["Any"] + list(calendar.month_name)[1:])
+    rec_type   = st.radio("🔀 Rule Type", ["All","color_swap","cross_category"])
+    min_conf   = st.slider("📉 Min Confidence",  0.0, 1.0, 0.4, 0.05)
+    min_lift   = st.slider("📈 Min Lift",        1.0, 5.0, 1.2, 0.1)
+    min_sup    = st.slider("📊 Min Support",     0.0, 0.1, 0.01, 0.005)
+    min_count  = st.slider("🛒 Consequent Frequency ≥", 1, 100, 5)
     sku_filter = st.text_input("🔍 SKU Contains (optional)")
     text_filt  = st.text_input("🔍 Search Consequent Text")
     bidir      = st.checkbox("↔ Bidirectional Match")
@@ -75,9 +83,7 @@ with st.sidebar:
         "merged_data.csv"
     )
 
-
 # ─── 3) RECOMMENDATION LOGIC ────────────────────────────────────────────────────
-
 def get_filtered_rules(df):
     d = df.copy()
     if month != "Any":
@@ -89,7 +95,7 @@ def get_filtered_rules(df):
         (d["lift"]       >= min_lift) &
         (d["support"]    >= min_sup)
     ]
-    d = d.drop_duplicates(subset=["antecedent","consequent"])
+    d = d.drop_duplicates(subset=["antecedent","consequent"]).copy()
     d["consequent_count"] = d.groupby("antecedent")["consequent"].transform("count")
     d = d[d["consequent_count"] >= min_count]
     if sku_filter:
@@ -98,6 +104,7 @@ def get_filtered_rules(df):
 
 
 def get_top_for_item(d, selected):
+    # Filter to the selected antecedent (or bidirectional)
     cond = (d["antecedent"] == selected)
     if bidir:
         cond |= (d["consequent"] == selected)
@@ -109,20 +116,20 @@ def get_top_for_item(d, selected):
     if text_filt:
         top = top[top["consequent"].str.contains(text_filt, case=False, na=False)]
 
-    # inject each consequent's own sales-summary metrics
+    # Merge in consequent's sales metrics by SKU
     top = (
         top
         .merge(
             sales_summary,
             how="left",
             left_on="consequent",
-            right_on="Description"
+            right_on="SKU"
         )
-        .drop(columns=["Description"], errors="ignore")
+        .drop(columns=["SKU","Description"], errors="ignore")
     )
     return top
 
-
+# Apply filters and build recommendation table
 filtered_df     = get_filtered_rules(merged_df)
 available_items = sorted(filtered_df["antecedent"].unique())
 
@@ -137,9 +144,7 @@ if not top_rules.empty:
 else:
     st.warning("No recommendations for these filters.")
 
-
-# ─── 4) DISPLAY TABLE & NATURAL LANGUAGE ────────────────────────────────────────
-
+# ─── 4) DISPLAY RESULTS ────────────────────────────────────────────────────────────
 col1, col2 = st.columns([2,1])
 
 with col1:
@@ -169,8 +174,7 @@ with col2:
         st.markdown("### 📊 Confidence Bar Chart")
         fig, ax = plt.subplots()
         ax.barh(top_rules["consequent"], top_rules["confidence"], color=plt.cm.Greens(top_rules["confidence"]))
-        ax.set_xlabel("Confidence")
-        ax.set_ylabel("Consequent Item")
+        ax.set_xlabel("Confidence"); ax.set_ylabel("Consequent Item")
         st.pyplot(fig)
 
         st.markdown("### 📈 Trend Chart")
@@ -180,7 +184,7 @@ with col2:
                 (merged_df["antecedent"] == selected_item)
                 & (merged_df["consequent"].isin(top_rules["consequent"]))
             ]
-            .drop_duplicates(subset=["Month","consequent"])
+            .drop_duplicates(subset=["Month","consequent"] )
             .set_index("Month")
             .reindex(month_order)
             .reset_index()
@@ -195,9 +199,7 @@ with col2:
             ax.legend(fontsize="small", bbox_to_anchor=(1.05,1))
             st.pyplot(fig)
 
-
 # ─── 5) DOWNLOAD TOP RECS ────────────────────────────────────────────────────────
-
 if not top_rules.empty:
     st.download_button(
         "📥 Download Recommendations CSV",
