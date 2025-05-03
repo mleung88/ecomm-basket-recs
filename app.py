@@ -136,6 +136,15 @@ def get_top_for_item(d, selected):
     )
     return top
 
+# generate recommendations from filtered rules
+filtered_df     = get_filtered_rules(merged_df)
+available_items = sorted(filtered_df["antecedent"].unique())
+
+st.subheader("🛍️ Select a Product to Analyze")
+selected_item   = st.selectbox("", available_items)
+
+top_rules = get_top_for_item(filtered_df, selected_item)
+
 # ─── 4) DISPLAY RESULTS ────────────────────────────────────────────────────────────
 col1, col2 = st.columns([2,1])
 
