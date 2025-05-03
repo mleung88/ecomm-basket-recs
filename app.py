@@ -111,17 +111,16 @@ def get_top_for_item(d, selected):
 
     # inject each consequent's own sales-summary metrics
     top = (
-        top
-        .merge(
+        top.merge(
             sales_summary,
             how="left",
             left_on="consequent",
             right_on="Description"
-        )
-        .drop(columns=["Description"], errors="ignore")
     )
-    return top
+    if "Description" in top.columns:
+        top = top.drop(columns=["Description"])
 
+    return top
 
 filtered_df     = get_filtered_rules(merged_df)
 available_items = sorted(filtered_df["antecedent"].unique())
