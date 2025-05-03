@@ -113,6 +113,7 @@ def get_top_for_item(d, selected):
     )
     if "Description" in top.columns:
         top = top.drop(columns=["Description"])
+    )
 
     return top
 
