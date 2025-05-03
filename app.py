@@ -11,26 +11,26 @@ st.title("📦 E-commerce Recommendation Dashboard")
 @st.cache_data
 def load_rules():
     """
-    Load precomputed association rules CSV. Rules must contain 'antecedent', 'consequent',
-    'confidence', 'lift', 'support', 'type', 'Month', and 'SKU' columns.
+    Load precomputed association rules.
+    rules_final.csv must contain at least: antecedent, consequent, confidence, lift, support, type, Month.
     """
     return pd.read_csv("rules_final.csv")
 
 @st.cache_data
 def load_and_aggregate_sales():
     """
-    Load raw sales transactions, compute sales summary grouped by SKU and Description.
-    Produces columns: SKU, Description, Total_Items, Price, Total_Spent.
+    Load raw sales data and build a summary by product Description.
+    Produces: Description, Total_Items, Price, Total_Spent.
     """
     df = pd.read_csv("Filter.csv")
 
-    # Compute TotalSpent if missing
+    # Compute total spent if missing
     if "TotalSpent" not in df.columns:
         df["TotalSpent"] = df["Quantity"] * df["UnitPrice"]
 
-    # Group by SKU & Description to preserve both
+    # Group by Description to summarize sales metrics
     summary = (
-        df.groupby(["SKU", "Description"], dropna=False)
+        df.groupby("Description", dropna=False)
           .agg(
              Total_Items = ("Quantity",   "sum"),
              Price       = ("UnitPrice",  "mean"),
@@ -43,17 +43,17 @@ def load_and_aggregate_sales():
 @st.cache_data
 def merge_rules_sales(rules, sales_summary):
     """
-    Merge rules with sales summary on the antecedent SKU to fetch antecedent metrics.
+    Merge rules with sales summary on antecedent Description.
     """
     merged = pd.merge(
         rules,
         sales_summary,
         how="left",
         left_on="antecedent",
-        right_on="SKU",
+        right_on="Description"
     )
-    # Drop redundant SKU and Description columns from the antecedent join
-    merged = merged.drop(columns=["SKU", "Description"], errors="ignore")
+    # Drop the joined Description column (from sales_summary)
+    merged = merged.drop(columns=["Description"], errors="ignore")
     return merged
 
 # Load data
@@ -86,25 +86,29 @@ with st.sidebar:
 # ─── 3) RECOMMENDATION LOGIC ────────────────────────────────────────────────────
 def get_filtered_rules(df):
     d = df.copy()
+    # month filter
     if month != "Any":
         d = d[d["Month"] == month]
+    # rule type filter
     if rec_type != "All" and "type" in d.columns:
         d = d[d["type"] == rec_type]
+    # numeric thresholds
     d = d[
         (d["confidence"] >= min_conf) &
         (d["lift"]       >= min_lift) &
         (d["support"]    >= min_sup)
     ]
+    # dedupe and count consequents per antecedent
     d = d.drop_duplicates(subset=["antecedent","consequent"]).copy()
     d["consequent_count"] = d.groupby("antecedent")["consequent"].transform("count")
     d = d[d["consequent_count"] >= min_count]
-    if sku_filter:
+    # SKU substring filter (if your rules CSV has a SKU column)
+    if sku_filter and "SKU" in d.columns:
         d = d[d["SKU"].astype(str).str.contains(sku_filter, case=False)]
     return d
 
 
 def get_top_for_item(d, selected):
-    # Filter to the selected antecedent (or bidirectional)
     cond = (d["antecedent"] == selected)
     if bidir:
         cond |= (d["consequent"] == selected)
@@ -112,24 +116,24 @@ def get_top_for_item(d, selected):
     top = d[cond].copy()
     top = top[top["antecedent"] != top["consequent"]]
     top = top.sort_values(sort_by, ascending=False).head(top_n)
-
+    # text search filter
     if text_filt:
         top = top[top["consequent"].str.contains(text_filt, case=False, na=False)]
 
-    # Merge in consequent's sales metrics by SKU
+    # bring in consequent's sales metrics by Description
     top = (
         top
         .merge(
             sales_summary,
             how="left",
             left_on="consequent",
-            right_on="SKU"
+            right_on="Description"
         )
-        .drop(columns=["SKU","Description"], errors="ignore")
+        .drop(columns=["Description"], errors="ignore")
     )
     return top
 
-# Apply filters and build recommendation table
+# generate recommendations
 filtered_df     = get_filtered_rules(merged_df)
 available_items = sorted(filtered_df["antecedent"].unique())
 
@@ -139,8 +143,7 @@ selected_item = st.selectbox("", available_items)
 top_rules = get_top_for_item(filtered_df, selected_item)
 
 if not top_rules.empty:
-    total_baskets = int(top_rules["consequent_count"].sum())
-    st.metric("🧺 Total Possible Baskets", total_baskets)
+    st.metric("🧺 Total Possible Baskets", int(top_rules["consequent_count"].sum()))
 else:
     st.warning("No recommendations for these filters.")
 
@@ -164,7 +167,7 @@ with col1:
         st.markdown("### 📘 Natural Language")
         for _, r in top_rules.iterrows():
             st.markdown(
-                f"- People who bought **{selected_item}** also buy **{r['consequent']}**  "
+                f"- People who bought **{selected_item}** also buy **{r['consequent']}** "
                 f"(conf: {r['confidence']:.2f}, lift: {r['lift']:.2f}, "
                 f"items: {int(r['Total_Items'])}, spent: ${r['Total_Spent']:.2f})"
             )
