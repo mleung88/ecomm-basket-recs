@@ -36,13 +36,15 @@ def load_and_aggregate_sales():
 
 @st.cache_data
 def merge_rules_sales(rules, sales_summary):
-    # left‐join on antecedent → metrics for that SKU
     return pd.merge(
         rules, sales_summary,
         how="left",
         left_on="antecedent",
         right_on="Description"
     )
+
+merged = merged.drop(columns=["Description"], errors="ignore")
+return merged
 
 
 rules_df       = load_rules()
@@ -112,7 +114,7 @@ def get_top_for_item(d, selected):
         how="left",
         left_on="consequent",
         right_on="Description"
-    ).drop(columns=["Description"])
+    ).drop(columns=["Description"], errors="ignore")
     return top
 
 filtered_df     = get_filtered_rules(merged_df)
