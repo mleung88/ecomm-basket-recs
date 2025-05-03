@@ -29,7 +29,6 @@ def load_and_aggregate_sales():
     )
     return summary
 
-
 @st.cache_data
 def merge_rules_sales(rules, sales_summary):
     # merge on antecedent → get its sales metrics
@@ -42,12 +41,10 @@ def merge_rules_sales(rules, sales_summary):
     # drop the imported Description column (antecedent side)
     merged = merged.drop(columns=["Description"], errors="ignore")
     return merged
-
-
+    
 rules_df      = load_rules()
 sales_summary = load_and_aggregate_sales()
 merged_df     = merge_rules_sales(rules_df, sales_summary)
-
 
 # ─── 2) SIDEBAR FILTERS ─────────────────────────────────────────────────────────
 
