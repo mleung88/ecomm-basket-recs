@@ -6,10 +6,13 @@ import calendar
 st.set_page_config(page_title="E-commerce Recommendation Dashboard", layout="wide")
 st.title("📦 E-commerce Recommendation Dashboard")
 
+
 # ─── 1) LOAD & PREPARE DATA ────────────────────────────────────────────────────
+
 @st.cache_data
 def load_rules():
     return pd.read_csv("rules_final.csv")
+
 
 @st.cache_data
 def load_and_aggregate_sales():
@@ -29,6 +32,7 @@ def load_and_aggregate_sales():
     )
     return summary
 
+
 @st.cache_data
 def merge_rules_sales(rules, sales_summary):
     # merge on antecedent → get its sales metrics
@@ -41,10 +45,12 @@ def merge_rules_sales(rules, sales_summary):
     # drop the imported Description column (antecedent side)
     merged = merged.drop(columns=["Description"], errors="ignore")
     return merged
-    
+
+
 rules_df      = load_rules()
 sales_summary = load_and_aggregate_sales()
 merged_df     = merge_rules_sales(rules_df, sales_summary)
+
 
 # ─── 2) SIDEBAR FILTERS ─────────────────────────────────────────────────────────
 
@@ -105,17 +111,17 @@ def get_top_for_item(d, selected):
 
     # inject each consequent's own sales-summary metrics
     top = (
-        top.merge(
+        top
+        .merge(
             sales_summary,
             how="left",
             left_on="consequent",
             right_on="Description"
+        )
+        .drop(columns=["Description"], errors="ignore")
     )
-    if "Description" in top.columns:
-        top = top.drop(columns=["Description"])
-    )
-
     return top
+
 
 filtered_df     = get_filtered_rules(merged_df)
 available_items = sorted(filtered_df["antecedent"].unique())
