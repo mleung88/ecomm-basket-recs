@@ -120,11 +120,14 @@ def get_top_for_item(d, selected):
     if text_filt:
         top = top[top["consequent"].str.contains(text_filt, case=False, na=False)]
 
+    # drop any pre-existing metric columns to avoid suffix conflicts
+    top = top.drop(columns=["Total_Items","Price","Total_Spent","Description"], errors="ignore")
+
     # bring in consequent's sales metrics by Description
     top = (
         top
         .merge(
-            sales_summary,
+            sales_summary[["Description","Total_Items","Price","Total_Spent"]],
             how="left",
             left_on="consequent",
             right_on="Description"
@@ -132,20 +135,6 @@ def get_top_for_item(d, selected):
         .drop(columns=["Description"], errors="ignore")
     )
     return top
-
-# generate recommendations
-filtered_df     = get_filtered_rules(merged_df)
-available_items = sorted(filtered_df["antecedent"].unique())
-
-st.subheader("🛍️ Select a Product to Analyze")
-selected_item = st.selectbox("", available_items)
-
-top_rules = get_top_for_item(filtered_df, selected_item)
-
-if not top_rules.empty:
-    st.metric("🧺 Total Possible Baskets", int(top_rules["consequent_count"].sum()))
-else:
-    st.warning("No recommendations for these filters.")
 
 # ─── 4) DISPLAY RESULTS ────────────────────────────────────────────────────────────
 col1, col2 = st.columns([2,1])
