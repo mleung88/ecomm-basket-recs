@@ -179,26 +179,24 @@ with col2:
         st.pyplot(fig)
 
         st.markdown("### 📈 Trend Chart")
-        month_order = list(calendar.month_name)[1:]
-        tr = (
-            merged_df.loc[
-                (merged_df["antecedent"] == selected_item)
-                & (merged_df["consequent"].isin(top_rules["consequent"]))
-            ]
-            .drop_duplicates(subset=["Month","consequent"] )
-            .set_index("Month")
-            .reindex(month_order)
-            .reset_index()
-        )
-        if not tr.empty:
-            fig, ax = plt.subplots()
-            for cons in tr["consequent"].unique():
-                temp = tr[tr["consequent"] == cons]
-                ax.plot(temp["Month"], temp["confidence"], marker="o", label=cons)
-            ax.set_ylabel("Confidence")
-            ax.set_xticklabels(month_order, rotation=45, ha="right")
-            ax.legend(fontsize="small", bbox_to_anchor=(1.05,1))
-            st.pyplot(fig)
+month_order = list(calendar.month_name)[1:]
+fig, ax = plt.subplots()
+# plot each consequent individually to avoid duplicate-index reindex errors
+for cons in top_rules["consequent"]:
+    temp = (
+        merged_df.loc[
+            (merged_df["antecedent"] == selected_item) &
+            (merged_df["consequent"] == cons)
+        ]
+        .drop_duplicates(subset=["Month","consequent"])
+        .set_index("Month")
+        .reindex(month_order)
+    )
+    ax.plot(month_order, temp["confidence"].fillna(0), marker="o", label=cons)
+ax.set_ylabel("Confidence")
+ax.set_xticklabels(month_order, rotation=45, ha="right")
+ax.legend(fontsize="small", bbox_to_anchor=(1.05,1))
+st.pyplot(fig)
 
 # ─── 5) DOWNLOAD TOP RECS ────────────────────────────────────────────────────────
 if not top_rules.empty:
