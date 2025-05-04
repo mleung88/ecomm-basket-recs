@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt  # still used for color maps
+import matplotlib.pyplot as plt
 import calendar
 
 # ─── APP CONFIG ─────────────────────────────────────────────────────────────────
@@ -39,7 +39,7 @@ def merge_rules_sales(rules, sales_summary):
     )
     return merged.drop(columns=["Description"], errors="ignore")
 
-# ─── 2) LOAD & MERGE DATA ────────────────────────────────────────────────────────
+# ─── 2) LOAD DATA ───────────────────────────────────────────────────────────────
 rules_df      = load_rules()
 sales_summary = load_and_aggregate_sales()
 merged_df     = merge_rules_sales(rules_df, sales_summary)
@@ -62,23 +62,25 @@ with st.sidebar:
     st.markdown("---")
     st.download_button("📥 Download Full Merged Data", merged_df.to_csv(index=False), "merged_data.csv")
 
-# ─── 4) RECOMMENDATION HELPER FUNCTIONS ─────────────────────────────────────────
+# ─── 4) HELPER FUNCTIONS ─────────────────────────────────────────────────────────
 def get_filtered_rules(df):
     d = df.copy()
-    if month != "Any": d = d[d["Month"] == month]
-    if rec_type != "All" and "type" in d.columns: d = d[d["type"] == rec_type]
+    if month != "Any":
+        d = d[d["Month"] == month]
+    if rec_type != "All" and "type" in d.columns:
+        d = d[d["type"] == rec_type]
     d = d[(d["confidence"] >= min_conf) & (d["lift"] >= min_lift) & (d["support"] >= min_sup)]
-    d = d.drop_duplicates(subset=["antecedent","consequent"])  
+    d = d.drop_duplicates(subset=["antecedent","consequent"]) 
     d["consequent_count"] = d.groupby("antecedent")["consequent"].transform("count")
     d = d[d["consequent_count"] >= min_count]
     if sku_filter and "SKU" in d.columns:
         d = d[d["SKU"].astype(str).str.contains(sku_filter, case=False)]
     return d
 
-
 def get_top_for_item(df, selected):
     cond = df["antecedent"] == selected
-    if bidir: cond |= df["consequent"] == selected
+    if bidir:
+        cond |= df["consequent"] == selected
     top = df[cond].copy()
     top = top[top["antecedent"] != top["consequent"]]
     top = top.sort_values(sort_by, ascending=False).head(top_n)
@@ -94,7 +96,7 @@ def get_top_for_item(df, selected):
     )
     return top
 
-# ─── 5) UI: SELECTION & DISPLAY ─────────────────────────────────────────────────
+# ─── 5) MAIN UI ─────────────────────────────────────────────────────────────────
 filtered_df     = get_filtered_rules(merged_df)
 available_items = sorted(filtered_df["antecedent"].unique())
 
@@ -106,56 +108,46 @@ top_rules = get_top_for_item(filtered_df, selected_item)
 if top_rules.empty:
     st.warning("No recommendations for these filters.")
 else:
-    col1, col2 = st.columns([2,1])
-    # Display recommendations table
-    with col1:
-        st.subheader(f"🔎 Top {len(top_rules)} Recs for `{selected_item}`")
-        cols = ["consequent","support","confidence","lift","Total_Items","Price","Total_Spent"]
-        st.dataframe(top_rules[cols], hide_index=True)
+    # Recommendations table
+    st.subheader(f"🔎 Top {len(top_rules)} Recs for `{selected_item}`")
+    cols = ["consequent","support","confidence","lift","Total_Items","Price","Total_Spent"]
+    st.dataframe(top_rules[cols], hide_index=True)
 
-        # Wrap natural language insights in an expander for collapsibility
-        with st.expander("📘 Natural Language Insights", expanded=True):
-            for _, r in top_rules.iterrows():
-                st.markdown(
-                    f"• People who bought **{selected_item}** also buy **{r['consequent']}**  "
-                    f"(conf: {r['confidence']:.2%}, lift: {r['lift']:.2f}, "
-                    f"items: {int(r['Total_Items'])}, spent: ${r['Total_Spent']:.2f})"
-                )
+    # Natural language insights
+    with st.expander("📘 Natural Language Insights", expanded=True):
+        for _, r in top_rules.iterrows():
+            st.markdown(
+                f"• People who bought **{selected_item}** also buy **{r['consequent']}**  "
+                f"(conf: {r['confidence']:.2%}, lift: {r['lift']:.2f}, "
+                f"items: {int(r['Total_Items'])}, spent: ${r['Total_Spent']:.2f})"
+            )
 
-    # Display charts
-    with col2:
+    # Charts side by side
+    chart_col1, chart_col2 = st.columns(2)
+
+    with chart_col1:
         st.markdown("### 📊 Confidence Bar Chart")
-        bar_fig = px.bar(
-            top_rules,
-            x="confidence",
-            y="consequent",
-            orientation="h",
-            text=top_rules["confidence"],
-            labels={"consequent":"Item","confidence":"Confidence"},
-            color_discrete_sequence=[plt.cm.Greens(0.6)],
-        )
-        bar_fig.update_layout(yaxis_categoryorder="total ascending", height=400)
-        st.plotly_chart(bar_fig, use_container_width=True)
+        fig1, ax1 = plt.subplots(figsize=(6,4))
+        ax1.barh(top_rules["consequent"], top_rules["confidence"], color=plt.cm.Greens(0.6))
+        ax1.invert_yaxis()
+        ax1.set_xlabel("Confidence")
+        ax1.set_ylabel("Item")
+        st.pyplot(fig1)
 
+    with chart_col2:
         st.markdown("### 📈 Trend Chart")
         month_order = list(calendar.month_name)[1:]
-        trend_df = (
-            merged_df.loc[
-                (merged_df["antecedent"] == selected_item)
-                & (merged_df["consequent"].isin(top_rules["consequent"]))
-            ]
-            .drop_duplicates(subset=["Month","consequent"] )
-            .assign(Month=lambda d: pd.Categorical(d["Month"], categories=month_order, ordered=True))
-        )
-        trend_fig = px.line(
-            trend_df,
-            x="Month",
-            y="confidence",
-            color="consequent",
-            markers=True,
-            labels={"confidence":"Confidence"},
-        )
-        trend_fig.update_layout(xaxis_tickangle=45, height=450)
-        st.plotly_chart(trend_fig, use_container_width=True)
+        fig2, ax2 = plt.subplots(figsize=(6,4))
+        for cons in top_rules["consequent"]:
+            temp = (
+                merged_df[(merged_df["antecedent"]==selected_item) & (merged_df["consequent"]==cons)]
+                    .drop_duplicates(["Month","consequent"]).set_index("Month").reindex(month_order)
+            )
+            ax2.plot(month_order, temp["confidence"].fillna(0), marker="o", label=cons)
+        ax2.set_ylabel("Confidence")
+        ax2.set_xticklabels(month_order, rotation=45, ha="right")
+        ax2.legend(fontsize="small", bbox_to_anchor=(1.05,1))
+        st.pyplot(fig2)
 
+    # Download button
     st.download_button("📥 Download Recommendations CSV", top_rules.to_csv(index=False), "top_recommendations.csv")
