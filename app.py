@@ -10,7 +10,14 @@ st.title("📦 E-commerce Recommendation Dashboard")
 # ─── 1) LOAD & PREPARE DATA ────────────────────────────────────────────────────
 @st.cache_data
 def load_rules():
-    return pd.read_csv("rules_final.csv")
+    rules = pd.read_csv("rules_final.csv")
+    # Derive a 'type' column: color_swap if same base product, else cross_category
+    def rule_type(row):
+        a_base = row["antecedent"].split()[0]
+        c_base = row["consequent"].split()[0]
+        return "color_swap" if a_base == c_base else "cross_category"
+    rules["type"] = rules.apply(rule_type, axis=1)
+    return rules
 
 @st.cache_data
 def load_and_aggregate_sales():
@@ -36,80 +43,132 @@ def merge_rules_sales(rules, sales_summary):
         how="left",
         left_on="antecedent",
         right_on="Description"
-    )
-    return merged.drop(columns=["Description"], errors="ignore")
+    ).drop(columns=["Description"], errors="ignore")
+    return merged
 
-# ─── 2) LOAD DATA ───────────────────────────────────────────────────────────────
+# Load data
 rules_df      = load_rules()
 sales_summary = load_and_aggregate_sales()
 merged_df     = merge_rules_sales(rules_df, sales_summary)
 
-# ─── 3) SIDEBAR FILTERS ─────────────────────────────────────────────────────────
+# ─── 2) SIDEBAR FILTERS ─────────────────────────────────────────────────────────
 with st.sidebar:
     st.header("🔧 Filters")
-    month               = st.selectbox("📅 Filter by Month", ["Any"] + list(calendar.month_name)[1:], key="month")
-    rec_type            = st.radio("🔀 Rule Type", ["All","color_swap","cross_category"], key="type")
-    min_conf            = st.slider("📉 Min Confidence",  0.0, 1.0, 0.4, 0.05, key="conf")
-    min_lift            = st.slider("📈 Min Lift",        1.0, 5.0, 1.2, 0.1, key="lift")
-    min_sup             = st.slider("📊 Min Support",     0.0, 0.1, 0.01, 0.005, key="sup")
-    min_count           = st.slider("🛒 Consequent Frequency ≥", 1, 10, 2, key="count")
-    antecedent_search   = st.text_input("🔍 Search Antecedent (optional)", key="ant_search")
-    text_filt           = st.text_input("🔍 Search Consequent Text (optional)", key="text")
-    bidir               = st.checkbox("↔ Bidirectional Match", key="bidir")
-    top_n               = st.slider("🔢 Top N Recs", 1, 20, 10, key="topn")
-    sort_by             = st.radio("📌 Sort By", ["confidence","lift"], key="sort")
-    group_by            = st.radio("🗂️ Group By", ["None","type","Month"], key="group")
-    st.markdown("---")
-    st.download_button("📥 Download Full Merged Data", merged_df.to_csv(index=False), "merged_data.csv")
 
-# ─── 4) HELPER FUNCTIONS ─────────────────────────────────────────────────────────
+    # Month filter
+    month      = st.selectbox(
+        "📅 Filter by Month",
+        ["Any"] + list(calendar.month_name)[1:],
+        key="month"
+    )
+
+    # Rule type filter (requires 'type' column)
+    rec_type   = st.radio(
+        "🔀 Rule Type",
+        ["All", "color_swap", "cross_category"],
+        key="type"
+    )
+
+    # Support / confidence / lift
+    min_conf   = st.slider("📉 Min Confidence",  0.0, 1.0, 0.4, 0.05, key="conf")
+    min_lift   = st.slider("📈 Min Lift",        1.0, 5.0, 1.2, 0.1, key="lift")
+    min_sup    = st.slider("📊 Min Support",     0.0, 0.1, 0.01, 0.005, key="sup")
+
+    # Dynamic max for consequent frequency
+    consec_counts = merged_df.groupby("antecedent")["consequent"].nunique()
+    max_consec = int(consec_counts.max())
+    min_count  = st.slider(
+        "🛒 Consequent Frequency ≥",
+        1,
+        max_consec,
+        5,
+        key="count"
+    )
+    st.caption(f"Max consequents per antecedent = {max_consec}")
+
+    # Antecedent text search
+    antecedent_search = st.text_input(
+        "🔍 Search Antecedent (optional)",
+        key="ant_search"
+    )
+
+    # Consequent text search
+    text_filt  = st.text_input("🔍 Search Consequent Text (optional)", key="text")
+
+    # Bidirectional match
+    bidir      = st.checkbox("↔ Bidirectional Match", key="bidir")
+
+    # Top-N and sort
+    top_n      = st.slider("🔢 Top N Recs", 1, 20, 10, key="topn")
+    sort_by    = st.radio("📌 Sort By", ["confidence","lift"], key="sort")
+
+    # Group by (for later aggregations)
+    group_by   = st.radio("🗂️ Group By", ["None", "type", "Month"], key="group")
+
+    st.markdown("---")
+    st.download_button(
+        "📥 Download Full Merged Data",
+        merged_df.to_csv(index=False),
+        "merged_data.csv"
+    )
+
+# ─── 3) HELPER FUNCTIONS ─────────────────────────────────────────────────────────
 def get_filtered_rules(df):
     d = df.copy()
-    # Month filter
+
+    # Month
     if month != "Any":
         d = d[d["Month"] == month]
-    # Rule type filter
+
+    # Rule type
     if rec_type != "All" and "type" in d.columns:
         d = d[d["type"] == rec_type]
-    # support / confidence / lift filters
-    d = d[(d["confidence"] >= min_conf) & (d["lift"] >= min_lift) & (d["support"] >= min_sup)]
-    # drop duplicate rules
+
+    # Support / confidence / lift
+    d = d[
+        (d["confidence"] >= min_conf) &
+        (d["lift"] >= min_lift) &
+        (d["support"] >= min_sup)
+    ]
+
+    # Dedupe and enforce min consequent count
     d = d.drop_duplicates(subset=["antecedent","consequent"])
-    # ensure enough consequents per antecedent
-    d["consequent_count"] = d.groupby("antecedent")["consequent"].transform("count")
+    d["consequent_count"] = d.groupby("antecedent")["consequent"].transform("nunique")
     d = d[d["consequent_count"] >= min_count]
+
     # Antecedent text search
     if antecedent_search:
         d = d[d["antecedent"].str.contains(antecedent_search, case=False, na=False)]
+
+    # Consequent text search
+    if text_filt:
+        d = d[d["consequent"].str.contains(text_filt, case=False, na=False)]
+
     return d
 
 def get_top_for_item(df, selected):
     cond = df["antecedent"] == selected
     if bidir:
         cond |= df["consequent"] == selected
+
     top = df[cond].copy()
-    # remove trivial self-rules
     top = top[top["antecedent"] != top["consequent"]]
-    # sort and trim
     top = top.sort_values(sort_by, ascending=False).head(top_n)
-    # consequent text filter
-    if text_filt:
-        top = top[top["consequent"].str.contains(text_filt, case=False, na=False)]
-    # merge back in sales summary for consequents
+
+    # Merge in sales summary for consequents
     top = (
-        top
-        .drop(columns=["Description","Total_Items","Price","Total_Spent"], errors="ignore")
-        .merge(
-            sales_summary[["Description","Total_Items","Price","Total_Spent"]],
-            how="left",
-            left_on="consequent",
-            right_on="Description"
-        )
-        .drop(columns=["Description"], errors="ignore")
+        top.drop(columns=["Description","Total_Items","Price","Total_Spent"], errors="ignore")
+           .merge(
+               sales_summary[["Description","Total_Items","Price","Total_Spent"]],
+               how="left",
+               left_on="consequent",
+               right_on="Description"
+           )
+           .drop(columns=["Description"], errors="ignore")
     )
     return top
 
-# ─── 5) MAIN UI ─────────────────────────────────────────────────────────────────
+# ─── 4) MAIN UI ─────────────────────────────────────────────────────────────────
 filtered_df     = get_filtered_rules(merged_df)
 available_items = sorted(filtered_df["antecedent"].unique())
 
@@ -121,12 +180,12 @@ top_rules = get_top_for_item(filtered_df, selected_item)
 if top_rules.empty:
     st.warning("No recommendations for these filters.")
 else:
-    # Table of top recommendations
-    st.subheader(f"🔎 Top {len(top_rules)} Recs for `{selected_item}`")
+    # Recommendations table
+    st.subheader(f"🔎 Top {len(top_rules)} Recs for “{selected_item}”")
     cols = ["consequent","support","confidence","lift","Total_Items","Price","Total_Spent"]
     st.dataframe(top_rules[cols], hide_index=True)
 
-    # Natural language insights
+    # Natural-language insights
     with st.expander("📘 Natural Language Insights", expanded=True):
         for _, r in top_rules.iterrows():
             st.markdown(
@@ -165,7 +224,7 @@ else:
         ax2.legend(fontsize="small", bbox_to_anchor=(1.05,1))
         st.pyplot(fig2)
 
-    # Download button for recommendations
+    # Download filtered recommendations
     st.download_button(
         "📥 Download Recommendations CSV",
         top_rules.to_csv(index=False),
