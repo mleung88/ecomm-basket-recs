@@ -53,7 +53,6 @@ with st.sidebar:
     min_lift   = st.slider("📈 Min Lift",        1.0, 5.0, 1.2, 0.1, key="lift")
     min_sup    = st.slider("📊 Min Support",     0.0, 0.1, 0.01, 0.005, key="sup")
     min_count  = st.slider("🛒 Consequent Frequency ≥", 1, 100, 5, key="count")
-    sku_filter = st.text_input("🔍 SKU Contains (optional)", key="sku")
     text_filt  = st.text_input("🔍 Search Consequent Text", key="text")
     bidir      = st.checkbox("↔ Bidirectional Match", key="bidir")
     top_n      = st.slider("🔢 Top N Recs", 1, 20, 10, key="topn")
