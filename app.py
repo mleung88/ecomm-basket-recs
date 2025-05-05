@@ -52,7 +52,7 @@ with st.sidebar:
     min_conf            = st.slider("📉 Min Confidence",  0.0, 1.0, 0.4, 0.05, key="conf")
     min_lift            = st.slider("📈 Min Lift",        1.0, 5.0, 1.2, 0.1, key="lift")
     min_sup             = st.slider("📊 Min Support",     0.0, 0.1, 0.01, 0.005, key="sup")
-    min_count           = st.slider("🛒 Consequent Frequency ≥", 1, 100, 5, key="count")
+    min_count           = st.slider("🛒 Consequent Frequency ≥", 1, 10, 2, key="count")
     antecedent_search   = st.text_input("🔍 Search Antecedent (optional)", key="ant_search")
     text_filt           = st.text_input("🔍 Search Consequent Text (optional)", key="text")
     bidir               = st.checkbox("↔ Bidirectional Match", key="bidir")
