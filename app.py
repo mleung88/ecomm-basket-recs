@@ -11,7 +11,7 @@ st.title("📦 E-commerce Recommendation Dashboard")
 @st.cache_data
 def load_rules():
     rules = pd.read_csv("rules_final.csv")
-    # Derive a 'type' column for color_swap vs cross_category
+    # Derive a 'type' column: color_swap if same base product, else cross_category
     def rule_type(row):
         a_base = row["antecedent"].split()[0]
         c_base = row["consequent"].split()[0]
@@ -46,7 +46,7 @@ def merge_rules_sales(rules, sales_summary):
     ).drop(columns=["Description"], errors="ignore")
     return merged
 
-# load dataframes
+# Load data
 rules_df      = load_rules()
 sales_summary = load_and_aggregate_sales()
 merged_df     = merge_rules_sales(rules_df, sales_summary)
@@ -56,28 +56,28 @@ with st.sidebar:
     st.header("🔧 Filters")
 
     # Month filter
-    month = st.selectbox(
+    month      = st.selectbox(
         "📅 Filter by Month",
         ["Any"] + list(calendar.month_name)[1:],
         key="month"
     )
 
-    # Rule type filter
-    rec_type = st.radio(
+    # Rule type filter (requires 'type' column)
+    rec_type   = st.radio(
         "🔀 Rule Type",
         ["All", "color_swap", "cross_category"],
         key="type"
     )
 
-    # Metric filters
-    min_conf = st.slider("📉 Min Confidence", 0.0, 1.0, 0.4, 0.05, key="conf")
-    min_lift = st.slider("📈 Min Lift",       1.0, 5.0, 1.2, 0.1, key="lift")
-    min_sup  = st.slider("📊 Min Support",    0.0, 0.1, 0.01, 0.005, key="sup")
+    # Support / confidence / lift
+    min_conf   = st.slider("📉 Min Confidence",  0.0, 1.0, 0.4, 0.05, key="conf")
+    min_lift   = st.slider("📈 Min Lift",        1.0, 5.0, 1.2, 0.1, key="lift")
+    min_sup    = st.slider("📊 Min Support",     0.0, 0.1, 0.01, 0.005, key="sup")
 
-    # Consequent frequency slider with dynamic max
+    # Dynamic max for consequent frequency
     consec_counts = merged_df.groupby("antecedent")["consequent"].nunique()
     max_consec = int(consec_counts.max())
-    min_count = st.slider(
+    min_count  = st.slider(
         "🛒 Consequent Frequency ≥",
         1,
         max_consec,
@@ -93,20 +93,17 @@ with st.sidebar:
     )
 
     # Consequent text search
-    text_filt = st.text_input(
-        "🔍 Search Consequent Text (optional)",
-        key="text"
-    )
+    text_filt  = st.text_input("🔍 Search Consequent Text (optional)", key="text")
 
     # Bidirectional match
-    bidir = st.checkbox("↔ Bidirectional Match", key="bidir")
+    bidir      = st.checkbox("↔ Bidirectional Match", key="bidir")
 
     # Top-N and sort
-    top_n   = st.slider("🔢 Top N Recs", 1, 20, 10, key="topn")
-    sort_by = st.radio("📌 Sort By", ["confidence", "lift"], key="sort")
+    top_n      = st.slider("🔢 Top N Recs", 1, 20, 10, key="topn")
+    sort_by    = st.radio("📌 Sort By", ["confidence","lift"], key="sort")
 
-    # Group by option
-    group_by = st.radio("🗂️ Group By", ["None", "type", "Month"], key="group")
+    # Group by (for later aggregations)
+    group_by   = st.radio("🗂️ Group By", ["None", "type", "Month"], key="group")
 
     st.markdown("---")
     st.download_button(
@@ -119,22 +116,22 @@ with st.sidebar:
 def get_filtered_rules(df):
     d = df.copy()
 
-    # Month filter
+    # Month
     if month != "Any":
         d = d[d["Month"] == month]
 
-    # Rule type filter
+    # Rule type
     if rec_type != "All" and "type" in d.columns:
         d = d[d["type"] == rec_type]
 
-    # Support / confidence / lift filters
+    # Support / confidence / lift
     d = d[
         (d["confidence"] >= min_conf) &
         (d["lift"] >= min_lift) &
         (d["support"] >= min_sup)
     ]
 
-    # Drop duplicates and enforce min consequent count
+    # Dedupe and enforce min consequent count
     d = d.drop_duplicates(subset=["antecedent","consequent"])
     d["consequent_count"] = d.groupby("antecedent")["consequent"].transform("nunique")
     d = d[d["consequent_count"] >= min_count]
@@ -160,54 +157,21 @@ def get_top_for_item(df, selected):
 
     # Merge in sales summary for consequents
     top = (
-        top
-        .drop(columns=["Description","Total_Items","Price","Total_Spent"], errors="ignore")
-        .merge(
-            sales_summary[["Description","Total_Items","Price","Total_Spent"]],
-            how="left",
-            left_on="consequent",
-            right_on="Description"
-        )
-        .drop(columns=["Description"], errors="ignore")
+        top.drop(columns=["Description","Total_Items","Price","Total_Spent"], errors="ignore")
+           .merge(
+               sales_summary[["Description","Total_Items","Price","Total_Spent"]],
+               how="left",
+               left_on="consequent",
+               right_on="Description"
+           )
+           .drop(columns=["Description"], errors="ignore")
     )
     return top
 
 # ─── 4) MAIN UI ─────────────────────────────────────────────────────────────────
-filtered_df = get_filtered_rules(merged_df)
-
-# If grouping is selected, show aggregated top-N per group
-if group_by in ["Month", "type"]:
-    st.subheader(f"🔎 Top {top_n} Rules by {group_by}")
-
-    # Aggregate metrics per group + rule
-    grp = (
-        filtered_df
-        .groupby([group_by, "antecedent", "consequent"], as_index=False)
-        .agg(
-            support    = ("support",    "mean"),
-            confidence = ("confidence", "mean"),
-            lift       = ("lift",       "mean"),
-            Total_Spent= ("Total_Spent","sum")
-        )
-    )
-
-    # Pick top-N within each group
-    def top_n_rules(subdf):
-        return subdf.nlargest(top_n, sort_by)
-
-    top_per_group = grp.groupby(group_by, group_keys=False).apply(top_n_rules)
-
-    st.dataframe(
-        top_per_group[[
-            group_by, "antecedent", "consequent",
-            "support", "confidence", "lift", "Total_Spent"
-        ]],
-        use_container_width=True
-    )
-    st.stop()
-
-# Otherwise, show single-product selector flow
+filtered_df     = get_filtered_rules(merged_df)
 available_items = sorted(filtered_df["antecedent"].unique())
+
 st.subheader("🛍️ Select a Product to Analyze")
 selected_item = st.selectbox("", available_items, key="select", label_visibility="hidden")
 
@@ -249,10 +213,7 @@ else:
         for cons in top_rules["consequent"]:
             temp = (
                 merged_df
-                .loc[
-                    (merged_df["antecedent"] == selected_item) &
-                    (merged_df["consequent"]  == cons)
-                ]
+                .loc[(merged_df["antecedent"] == selected_item) & (merged_df["consequent"] == cons)]
                 .drop_duplicates(["Month","consequent"])
                 .set_index("Month")
                 .reindex(month_order)
